@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // APIClient is a helper to make raw requests for methods missing from tgbotapi
@@ -18,6 +19,7 @@ func NewAPIClient(token, baseURL string) *APIClient {
 	if baseURL == "" {
 		baseURL = "https://api.telegram.org"
 	}
+	baseURL = strings.TrimRight(baseURL, "/")
 	return &APIClient{Token: token, BaseURL: baseURL}
 }
 

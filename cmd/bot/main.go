@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -59,6 +60,7 @@ func main() {
 
 	apiEndpoint := tgbotapi.APIEndpoint
 	if cfg.CustomBaseURL != "" {
+		cfg.CustomBaseURL = strings.TrimRight(cfg.CustomBaseURL, "/")
 		apiEndpoint = cfg.CustomBaseURL + "/bot%s/%s"
 	}
 	

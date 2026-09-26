@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"crypto/tls"
 	"log"
 	"net"
@@ -13,13 +14,16 @@ import (
 // It enforces strict timeouts on DNS, TLS Handshakes, and Keep-Alives.
 func NewHTTPClient() *http.Client {
 	transport := &http.Transport{
-		Proxy: nil,
+		Proxy: http.ProxyFromEnvironment,
 
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}
+			// Force IPv4 to prevent IPv6/MTU blackholes on Hugging Face Spaces
+			return dialer.DialContext(ctx, "tcp4", addr)
+		},
 
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
