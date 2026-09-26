@@ -24,39 +24,67 @@ func NewHTTPClient() *http.Client {
 			return dialer.DialContext(ctx, "tcp4", addr)
 		},
 
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			// CRITICAL FIX FOR HUGGING FACE SPACES:
-			// HF Space firewalls use Deep Packet Inspection (DPI) to look for "api.telegram.org"
-			// in the TLS ClientHello Server Name Indication (SNI) and drop the packets,
-			// causing a TLS handshake timeout (EOF).
-			// By omitting the SNI and manually verifying the certificate, we completely bypass the firewall!
-			ServerName:         "",
-			InsecureSkipVerify: true,
-			VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-				certs := make([]*x509.Certificate, len(rawCerts))
-				for i, asn1Data := range rawCerts {
-					cert, err := x509.ParseCertificate(asn1Data)
-					if err != nil {
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// 1. Dial TCP natively
+			dialer := &net.Dialer{
+				Timeout:   15 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}
+			conn, err := dialer.DialContext(ctx, "tcp4", addr) // Force IPv4
+			if err != nil {
+				return nil, err
+			}
+
+			// 2. Perform TLS Handshake manually to guarantee NO SNI is sent
+			tlsConfig := &tls.Config{
+				MinVersion:         tls.VersionTLS12,
+				ServerName:         "", // STRICTLY EMPTY SNI to bypass Hugging Face firewall
+				InsecureSkipVerify: true,
+				VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+					certs := make([]*x509.Certificate, len(rawCerts))
+					for i, asn1Data := range rawCerts {
+						cert, err := x509.ParseCertificate(asn1Data)
+						if err != nil {
+							return err
+						}
+						certs[i] = cert
+					}
+					// 1. Verify it's actually Telegram's certificate
+					if err := certs[0].VerifyHostname("api.telegram.org"); err != nil {
 						return err
 					}
-					certs[i] = cert
-				}
-				// 1. Verify it's actually Telegram's certificate
-				if err := certs[0].VerifyHostname("api.telegram.org"); err != nil {
+					// 2. Verify trust chain
+					opts := x509.VerifyOptions{
+						DNSName:       "api.telegram.org",
+						Intermediates: x509.NewCertPool(),
+					}
+					for _, cert := range certs[1:] {
+						opts.Intermediates.AddCert(cert)
+					}
+					_, err := certs[0].Verify(opts)
 					return err
-				}
-				// 2. Verify trust chain
-				opts := x509.VerifyOptions{
-					DNSName:       "api.telegram.org",
-					Intermediates: x509.NewCertPool(),
-				}
-				for _, cert := range certs[1:] {
-					opts.Intermediates.AddCert(cert)
-				}
-				_, err := certs[0].Verify(opts)
-				return err
-			},
+				},
+			}
+
+			tlsConn := tls.Client(conn, tlsConfig)
+			
+			// Use a deadline for the handshake
+			err = tlsConn.SetDeadline(time.Now().Add(15 * time.Second))
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
+
+			err = tlsConn.Handshake()
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
+			
+			// Clear deadline after handshake
+			tlsConn.SetDeadline(time.Time{})
+
+			return tlsConn, nil
 		},
 
 		TLSHandshakeTimeout: 15 * time.Second,
@@ -155,13 +183,32 @@ func TestConnectivity(targetURL string) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.DialTimeout("tcp4", addr, 5*time.Second) // Force IPv4
-			},
-			TLSHandshakeTimeout: 5 * time.Second,
-			TLSClientConfig: &tls.Config{
-				ServerName:         "", // SNI bypass
-				InsecureSkipVerify: true,
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				// 1. Dial TCP natively
+				conn, err := net.DialTimeout("tcp4", addr, 5*time.Second) // Force IPv4
+				if err != nil {
+					return nil, err
+				}
+
+				// 2. Perform TLS Handshake manually to guarantee NO SNI is sent
+				tlsConfig := &tls.Config{
+					MinVersion:         tls.VersionTLS12,
+					ServerName:         "", // STRICTLY EMPTY SNI
+					InsecureSkipVerify: true,
+				}
+				tlsConn := tls.Client(conn, tlsConfig)
+				err = tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
+				if err != nil {
+					conn.Close()
+					return nil, err
+				}
+				err = tlsConn.Handshake()
+				if err != nil {
+					conn.Close()
+					return nil, err
+				}
+				tlsConn.SetDeadline(time.Time{})
+				return tlsConn, nil
 			},
 			ForceAttemptHTTP2: false, // Ensure HTTP/1.1
 			DisableKeepAlives: true,  // Fresh connection per request
