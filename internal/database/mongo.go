@@ -23,9 +23,11 @@ type MongoStore struct {
 func NewMongoStore(ctx context.Context, uri string) (*MongoStore, error) {
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	opts := options.Client().ApplyURI(uri).SetServerAPIOptions(serverAPI).
-		SetConnectTimeout(5 * time.Second).
-		SetSocketTimeout(5 * time.Second).
-		SetServerSelectionTimeout(5 * time.Second)
+		SetConnectTimeout(15 * time.Second).
+		SetSocketTimeout(60 * time.Second). // 60s to allow large state docs to download
+		SetServerSelectionTimeout(15 * time.Second).
+		SetMaxPoolSize(50).
+		SetRetryReads(true)
 
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
@@ -44,6 +46,72 @@ func NewMongoStore(ctx context.Context, uri string) (*MongoStore, error) {
 		collection:              collection,
 		batchContentsCollection: batchContentsCollection,
 	}, nil
+}
+
+// Diagnose safely verifies all layers of MongoDB connectivity and BSON decoding
+func (m *MongoStore) Diagnose(ctx context.Context) error {
+	fmt.Println("MongoDB Diagnostic Suite:")
+
+	// 1-3. Handled by client.Ping which tests DNS, server selection, and round trip
+	fmt.Printf("DNS & Server Selection: ")
+	if err := m.client.Ping(ctx, nil); err != nil {
+		fmt.Printf("FAIL (%v)\n", err)
+		return fmt.Errorf("ping failed: %w", err)
+	}
+	fmt.Println("PASS")
+	fmt.Println("Ping: PASS")
+
+	// 4-5. Database and Collection config
+	fmt.Printf("Database: %s\n", m.collection.Database().Name())
+	fmt.Printf("Collection: %s\n", m.collection.Name())
+
+	// 6. Find document (Network Retrieval)
+	fmt.Printf("Find state document: ")
+	res := m.collection.FindOne(ctx, bson.M{"_id": "main_settings"})
+	if res.Err() != nil {
+		if res.Err() == mongo.ErrNoDocuments {
+			fmt.Println("PASS (Empty/Not Found)")
+			return nil // No doc is fine, just means fresh bot
+		}
+		// Distinguish timeout/network errors from decode errors
+		fmt.Printf("NETWORK TIMEOUT / ERROR (%v)\n", res.Err())
+		return fmt.Errorf("MongoDB state retrieval: NETWORK TIMEOUT (%w)", res.Err())
+	}
+	fmt.Println("PASS")
+
+	// 7. BSON retrieval (Raw bytes)
+	fmt.Printf("BSON retrieval: ")
+	raw, err := res.DecodeBytes()
+	if err != nil {
+		fmt.Printf("FAIL (%v)\n", err)
+		return fmt.Errorf("MongoDB BSON retrieval error: %w", err)
+	}
+	fmt.Println("PASS")
+
+	// 8. BSON decode (Schema mapping)
+	fmt.Printf("BSON decode: ")
+	var doc struct {
+		ID   string          `bson:"_id"`
+		Data models.BotState `bson:"data"`
+	}
+	err = bson.Unmarshal(raw, &doc)
+	if err != nil {
+		fmt.Printf("FAIL (Decode mapping error: %v)\n", err)
+		return fmt.Errorf("MongoDB BSON decode error: %w", err)
+	}
+	fmt.Println("PASS")
+
+	// 9. State validation
+	fmt.Printf("State validation: ")
+	state := &doc.Data
+	if state.Users == nil {
+		fmt.Println("WARNING (Nil maps initialized to empty)")
+	} else {
+		fmt.Printf("PASS (Users: %d, Free channels: %d, Paid channels: %d, Special channels: %d, User topics: %d)\n",
+			len(state.Users), len(state.FreeBatches), len(state.PaidBatches), len(state.SpecialBatches), len(state.UserTopics))
+	}
+
+	return nil
 }
 
 func encodeLinkMapKey(hash string) string {

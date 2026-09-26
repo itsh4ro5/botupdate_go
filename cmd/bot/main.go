@@ -45,21 +45,33 @@ func main() {
 		store = database.NewJSONStore(cfg.DataFile)
 	}
 
+	// 2.5 Run the SAFE Diagnostic mode
+	if mongoStore, ok := store.(*database.MongoStore); ok {
+		diagErr := mongoStore.Diagnose(context.Background())
+		if diagErr != nil {
+			log.Fatalf("MongoDB Initialization: FAILED\nTelegram initialization: SKIPPED\n%v", diagErr)
+		}
+	}
+
 	// Ensure we can load state
 	state, err := store.Load(context.Background())
 	if err != nil {
 		log.Fatalf("MongoDB state decode: FAILED\nExpected: compatible representations\nTelegram initialization: SKIPPED\nError: %v", err)
 	}
 
-	log.Println("MongoDB connection: OK")
-	log.Println("MongoDB state fetch: OK")
-	log.Println("MongoDB state decode: OK")
-	log.Printf("Users: %d", len(state.Users))
-	log.Printf("Free channels: %d", len(state.FreeBatches))
-	log.Printf("Paid channels: %d", len(state.PaidBatches))
-	log.Printf("Special channels: %d", len(state.SpecialBatches))
-	log.Printf("User topics: %d", len(state.UserTopics))
-	log.Println("State validation: PASSED")
+	if _, ok := store.(*database.MongoStore); !ok {
+		// Fallback for JSON store logs
+		log.Println("MongoDB connection: OK (Using JSON Store fallback)")
+		log.Println("MongoDB state fetch: OK")
+		log.Println("MongoDB state decode: OK")
+		log.Printf("Users: %d", len(state.Users))
+		log.Printf("Free channels: %d", len(state.FreeBatches))
+		log.Printf("Paid channels: %d", len(state.PaidBatches))
+		log.Printf("Special channels: %d", len(state.SpecialBatches))
+		log.Printf("User topics: %d", len(state.UserTopics))
+		log.Println("State validation: PASSED")
+	}
+
 	log.Println("Proceeding to Telegram initialization...")
 
 	// 3. Initialize Telegram Bot
