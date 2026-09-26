@@ -1,0 +1,24 @@
+[Unit]
+Description=Telegram BotUpdate Command Center
+After=network.target
+
+[Service]
+Type=simple
+User=botuser
+Group=botuser
+WorkingDirectory=/opt/botupdate
+EnvironmentFile=/opt/botupdate/.env
+ExecStart=/opt/botupdate/botupdate
+Restart=always
+RestartSec=5
+
+# Graceful shutdown configuration
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
