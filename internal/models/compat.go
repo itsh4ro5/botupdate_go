@@ -3,12 +3,13 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/bsontype"
-	"strconv"
 )
 
-// parseIntSetFromRaw handles legacy array format and newer map format
+// parseIntSetFromJSON handles legacy array format and newer map format.
 func parseIntSetFromJSON(raw json.RawMessage) (map[int64]struct{}, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return make(map[int64]struct{}), nil
@@ -16,7 +17,7 @@ func parseIntSetFromJSON(raw json.RawMessage) (map[int64]struct{}, error) {
 
 	res := make(map[int64]struct{})
 
-	// Try parsing as array first (legacy Python list)
+	// Try parsing as array first (legacy Python list).
 	var arr []int64
 	if err := json.Unmarshal(raw, &arr); err == nil {
 		for _, v := range arr {
@@ -25,7 +26,7 @@ func parseIntSetFromJSON(raw json.RawMessage) (map[int64]struct{}, error) {
 		return res, nil
 	}
 
-	// Try parsing as map[string]struct{} or map[int64]struct{}
+	// Try parsing as map[string]interface{}.
 	var m map[string]interface{}
 	if err := json.Unmarshal(raw, &m); err == nil {
 		for k := range m {
@@ -39,6 +40,7 @@ func parseIntSetFromJSON(raw json.RawMessage) (map[int64]struct{}, error) {
 	return nil, fmt.Errorf("failed to parse IntSet from JSON")
 }
 
+// parseIntSetFromBSON handles legacy array format and newer map format.
 func parseIntSetFromBSON(raw bson.RawValue) (map[int64]struct{}, error) {
 	if len(raw.Value) == 0 || raw.Type == bsontype.Null {
 		return make(map[int64]struct{}), nil
@@ -46,7 +48,7 @@ func parseIntSetFromBSON(raw bson.RawValue) (map[int64]struct{}, error) {
 
 	res := make(map[int64]struct{})
 
-	// Legacy Array
+	// Legacy Array.
 	if raw.Type == bsontype.Array {
 		var arr bson.A
 		if err := raw.Unmarshal(&arr); err == nil {
@@ -64,7 +66,7 @@ func parseIntSetFromBSON(raw bson.RawValue) (map[int64]struct{}, error) {
 		}
 	}
 
-	// Map
+	// Map.
 	if raw.Type == bsontype.EmbeddedDocument {
 		var m bson.M
 		if err := raw.Unmarshal(&m); err == nil {
@@ -80,9 +82,12 @@ func parseIntSetFromBSON(raw bson.RawValue) (map[int64]struct{}, error) {
 	return nil, fmt.Errorf("failed to parse IntSet from BSON: unknown format")
 }
 
-// UnmarshalJSON parses BotState, safely handling legacy lists
+
+
+// UnmarshalJSON parses BotState, safely handling legacy lists.
 func (b *BotState) UnmarshalJSON(data []byte) error {
 	type Alias BotState
+
 	aux := &struct {
 		AdminIDs     json.RawMessage `json:"admin_ids"`
 		BlockedUsers json.RawMessage `json:"blocked_users"`
@@ -94,8 +99,10 @@ func (b *BotState) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
+
 	*b = (BotState)(aux.Alias)
 
+	// Admin IDs.
 	if aux.AdminIDs != nil {
 		parsed, err := parseIntSetFromJSON(aux.AdminIDs)
 		if err != nil {
@@ -106,6 +113,7 @@ func (b *BotState) UnmarshalJSON(data []byte) error {
 		b.AdminIDs = make(map[int64]struct{})
 	}
 
+	// Blocked users.
 	if aux.BlockedUsers != nil {
 		parsed, err := parseIntSetFromJSON(aux.BlockedUsers)
 		if err != nil {
@@ -119,9 +127,10 @@ func (b *BotState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalBSON parses BotState, safely handling legacy arrays
+// UnmarshalBSON parses BotState and safely handles legacy BSON formats.
 func (b *BotState) UnmarshalBSON(data []byte) error {
 	type Alias BotState
+
 	aux := &struct {
 		AdminIDs     bson.RawValue `bson:"admin_ids"`
 		BlockedUsers bson.RawValue `bson:"blocked_users"`
@@ -133,23 +142,34 @@ func (b *BotState) UnmarshalBSON(data []byte) error {
 	if err := bson.Unmarshal(data, &aux); err != nil {
 		return err
 	}
+
 	*b = (BotState)(aux.Alias)
 
+	// ---------------------------------------------------------
+	// Admin IDs
+	// ---------------------------------------------------------
 	parsedAdmins, err := parseIntSetFromBSON(aux.AdminIDs)
 	if err != nil {
 		return fmt.Errorf("admin_ids decoding failed: %v", err)
 	}
 	b.AdminIDs = parsedAdmins
 
+	// ---------------------------------------------------------
+	// Blocked users
+	// ---------------------------------------------------------
 	parsedBlocked, err := parseIntSetFromBSON(aux.BlockedUsers)
 	if err != nil {
 		return fmt.Errorf("blocked_users decoding failed: %v", err)
 	}
 	b.BlockedUsers = parsedBlocked
 
+
+
 	return nil
 }
 
+// MarshalJSON serializes BotState while keeping AdminIDs and
+// BlockedUsers compatible with the legacy JSON representation.
 func (b *BotState) MarshalJSON() ([]byte, error) {
 	type Alias BotState
 
@@ -174,6 +194,8 @@ func (b *BotState) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// MarshalBSON serializes BotState while keeping AdminIDs and
+// BlockedUsers in the normalized BSON representation.
 func (b *BotState) MarshalBSON() ([]byte, error) {
 	type Alias BotState
 

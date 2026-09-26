@@ -1,7 +1,11 @@
 package models
 
 import (
+	"fmt"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/bsontype"
 )
 
 type WebAdmin struct {
@@ -78,6 +82,41 @@ type SupportTopic struct {
 	UserID        int64 `json:"user_id" bson:"user_id"`
 	TopicID       int   `json:"topic_id" bson:"topic_id"`
 	MessageThread int   `json:"message_thread_id" bson:"message_thread_id"`
+}
+
+// UnmarshalBSONValue handles legacy integer representations of user topics
+func (s *SupportTopic) UnmarshalBSONValue(t bsontype.Type, data []byte) error {
+	switch t {
+	case bsontype.Int32:
+		var val int32
+		if err := bson.UnmarshalValue(t, data, &val); err != nil {
+			return err
+		}
+		s.TopicID = int(val)
+		s.MessageThread = int(val)
+		return nil
+
+	case bsontype.Int64:
+		var val int64
+		if err := bson.UnmarshalValue(t, data, &val); err != nil {
+			return err
+		}
+		s.TopicID = int(val)
+		s.MessageThread = int(val)
+		return nil
+
+	case bsontype.EmbeddedDocument:
+		type Alias SupportTopic
+		var aux Alias
+		if err := bson.UnmarshalValue(t, data, &aux); err != nil {
+			return err
+		}
+		*s = (SupportTopic)(aux)
+		return nil
+
+	default:
+		return fmt.Errorf("cannot decode BSON type %s into SupportTopic", t.String())
+	}
 }
 
 // PendingRequest represents a user's join request to a batch channel
