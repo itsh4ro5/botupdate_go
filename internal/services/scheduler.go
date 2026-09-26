@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,6 +64,7 @@ func (s *Scheduler) runCleanup(ctx context.Context) {
 	state, err := s.store.Load(ctx)
 	if err != nil {
 		log.Printf("Scheduler load error: %v", err)
+		log.Printf("Membership enforcement skipped: verification unavailable")
 		return
 	}
 
@@ -131,6 +133,7 @@ func (s *Scheduler) RunSync(ctx context.Context, cb func(string)) {
 			if cb != nil {
 				cb("❌ Error loading state")
 			}
+			log.Printf("Membership enforcement skipped: verification unavailable (MongoDB error)")
 			return
 		}
 
@@ -148,6 +151,33 @@ func (s *Scheduler) RunSync(ctx context.Context, cb func(string)) {
 		count := 0
 		failed := 0
 
+		// Extract botID from the token (the part before the colon)
+		botIDStr := strings.Split(s.api.Token, ":")[0]
+		botID, err := strconv.ParseInt(botIDStr, 10, 64)
+		if err != nil {
+			log.Printf("Membership enforcement skipped: verification unavailable (cannot parse bot ID from token)")
+			if cb != nil {
+				cb("❌ Sync skipped: Bot ID could not be parsed.")
+			}
+			return
+		}
+
+		botMember, botErr := s.api.GetChatMember(s.mandatoryChannelID, botID)
+		if botErr != nil {
+			log.Printf("Membership enforcement skipped: verification unavailable (cannot fetch bot status: %v)", botErr)
+			if cb != nil {
+				cb("❌ Sync skipped: Bot admin status could not be verified.")
+			}
+			return
+		}
+		if botStatus, _ := botMember["status"].(string); botStatus != "administrator" && botStatus != "creator" {
+			log.Printf("Membership enforcement skipped: bot is not an administrator in the mandatory channel (status: %s)", botStatus)
+			if cb != nil {
+				cb("❌ Sync skipped: Bot is not an admin in the mandatory channel.")
+			}
+			return
+		}
+
 		for uid, user := range state.Users {
 			if _, blocked := state.BlockedUsers[uid]; blocked {
 				continue
@@ -161,15 +191,19 @@ func (s *Scheduler) RunSync(ctx context.Context, cb func(string)) {
 
 			member, err := s.api.GetChatMember(s.mandatoryChannelID, uid)
 			if err != nil {
-				// Might be kicked or not joined
-				log.Printf("User %d missing from mandatory channel, kicking...", uid)
-				s.UniversalKick(ctx, uid, state)
-				count++
-			} else if status, ok := member["status"].(string); ok && (status == "left" || status == "kicked") {
-				// Universal Kick
-				log.Printf("User %d missing from mandatory channel, kicking...", uid)
-				s.UniversalKick(ctx, uid, state)
-				count++
+				// DO NOT kick on API error (e.g. rate limit, timeout, network failure)
+				log.Printf("MEMBERSHIP_CHECK user=%d chat=%d ERROR=%v", uid, s.mandatoryChannelID, err)
+				failed++
+			} else if status, ok := member["status"].(string); ok {
+				// Only explicit left or kicked triggers UniversalKick
+				if status == "left" || status == "kicked" {
+					log.Printf("MEMBERSHIP_CHECK user=%d chat=%d status=%s -> Action: KICK", uid, s.mandatoryChannelID, status)
+					log.Printf("User %d missing from mandatory channel (status %s), kicking...", uid, status)
+					s.UniversalKick(ctx, uid, state)
+					count++
+				} else {
+					log.Printf("MEMBERSHIP_CHECK user=%d chat=%d status=%s -> Action: KEEP", uid, s.mandatoryChannelID, status)
+				}
 			}
 			time.Sleep(200 * time.Millisecond) // rate limit
 		}

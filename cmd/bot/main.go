@@ -135,6 +135,32 @@ func main() {
 	// API Client for internal services
 	apiClient := telegram.NewAPIClient(bot.Token)
 
+	log.Printf("Mandatory channel configuration:")
+	log.Printf("ID: %d", cfg.MandatoryChannelID)
+	if cfg.MandatoryChannelID != 0 {
+		chat, err := bot.GetChat(tgbotapi.ChatInfoConfig{ChatConfig: tgbotapi.ChatConfig{ChatID: cfg.MandatoryChannelID}})
+		if err != nil {
+			log.Printf("Username/title if available: UNKNOWN (Error fetching: %v)", err)
+		} else {
+			log.Printf("Username/title if available: %v / @%v", chat.Title, chat.UserName)
+		}
+
+		botMember, err := bot.GetChatMember(tgbotapi.GetChatMemberConfig{
+			ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+				ChatID: cfg.MandatoryChannelID,
+				UserID: bot.Self.ID,
+			},
+		})
+		if err != nil {
+			log.Printf("Bot membership/admin status: UNKNOWN (Error fetching: %v)", err)
+		} else {
+			log.Printf("Bot membership/admin status: %s", botMember.Status)
+		}
+	} else {
+		log.Printf("Username/title if available: N/A")
+		log.Printf("Bot membership/admin status: N/A")
+	}
+
 	// 5. Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

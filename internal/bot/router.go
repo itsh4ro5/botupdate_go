@@ -163,7 +163,9 @@ func (r *Router) handleChatJoinRequest(ctx context.Context, req *tgbotapi.ChatJo
 func (r *Router) handleChatMember(ctx context.Context, update *tgbotapi.ChatMemberUpdated) {
 	if update.Chat.ID == r.scheduler.GetMandatoryChannelID() {
 		status := update.NewChatMember.Status
-		if status == "left" || status == "kicked" || status == "banned" || status == "restricted" {
+		// ONLY explicitly left, kicked, or banned users are universally kicked
+		// "restricted" users might still be members (e.g. muted), so they are spared.
+		if status == "left" || status == "kicked" || status == "banned" {
 			state, err := r.store.Load(ctx)
 			if err == nil {
 				r.scheduler.UniversalKick(ctx, update.From.ID, state)
@@ -705,7 +707,11 @@ func (r *Router) handleBroadcastCallback(ctx context.Context, query *tgbotapi.Ca
 				if err != nil {
 					if isUserBroadcast {
 						blockedCount++
-						r.scheduler.UniversalKick(context.Background(), tid, dbState)
+						// Only kick if explicitly blocked/deactivated, skip for temporary network errors
+						errStr := err.Error()
+						if strings.Contains(errStr, "Forbidden") || strings.Contains(errStr, "blocked by the user") || strings.Contains(errStr, "user is deactivated") {
+							r.scheduler.UniversalKick(context.Background(), tid, dbState)
+						}
 					}
 				} else {
 					count++
