@@ -13,27 +13,25 @@ import (
 // It enforces strict timeouts on DNS, TLS Handshakes, and Keep-Alives.
 func NewHTTPClient() *http.Client {
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		Proxy: nil,
+
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second, // Max time for DNS + TCP
-			KeepAlive: 30 * time.Second, // Keep idle connections alive
-			DualStack: true,             // Use IPv4 or IPv6
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
 		}).DialContext,
-		
-		// TLS configuration
+
 		TLSClientConfig: &tls.Config{
-			// Do NOT use InsecureSkipVerify
 			MinVersion: tls.VersionTLS12,
 		},
+
 		TLSHandshakeTimeout: 15 * time.Second,
-		
-		// Connection pooling
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
-		IdleConnTimeout:       90 * time.Second,
-		
-		// Header timeouts
+
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
 	}
@@ -47,14 +45,14 @@ func NewHTTPClient() *http.Client {
 // TestConnectivity safely tests connectivity to a given URL
 func TestConnectivity(targetURL string) {
 	log.Printf("Running diagnostic check for: %s", targetURL)
-	
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
 			TLSHandshakeTimeout: 5 * time.Second,
 		},
 	}
-	
+
 	resp, err := client.Get(targetURL)
 	if err != nil {
 		log.Printf("Diagnostic FAIL: %v", err)

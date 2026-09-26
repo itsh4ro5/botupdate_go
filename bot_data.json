@@ -1,0 +1,23 @@
+{
+  "admin_ids": {},
+  "free_batches": {},
+  "paid_batches": {},
+  "special_batches": {},
+  "all_chats": {},
+  "users": {},
+  "blocked_users": {},
+  "user_topics": {},
+  "pending_requests": {},
+  "link_map": {},
+  "custom_welcomes": {},
+  "batch_categories": {},
+  "categories": [],
+  "scheduled_deletes": null,
+  "batch_coins": {},
+  "new_users_allowed": false,
+  "free_locked": false,
+  "paid_locked": false,
+  "test_bot_locked": false,
+  "maintenance_mode": false,
+  "test_bot_link": ""
+}
