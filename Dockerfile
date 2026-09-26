@@ -12,7 +12,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN GOMAXPROCS=2 CGO_ENABLED=0 GOOS=linux go build -p 1 -o bot ./cmd/bot
+RUN GOMAXPROCS=1 GOFLAGS="-p=1" CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o bot ./cmd/bot
 
 # Runtime
 FROM alpine:latest
