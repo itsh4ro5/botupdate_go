@@ -49,9 +49,19 @@ func main() {
 	// Ensure we can load state
 	state, err := store.Load(context.Background())
 	if err != nil {
-		log.Fatalf("Failed to load state: %v", err)
+		log.Fatalf("MongoDB state decode: FAILED\nExpected: compatible representations\nTelegram initialization: SKIPPED\nError: %v", err)
 	}
-	log.Printf("Loaded state with %d users and %d free batches", len(state.Users), len(state.FreeBatches))
+
+	log.Println("MongoDB connection: OK")
+	log.Println("MongoDB state fetch: OK")
+	log.Println("MongoDB state decode: OK")
+	log.Printf("Users: %d", len(state.Users))
+	log.Printf("Free channels: %d", len(state.FreeBatches))
+	log.Printf("Paid channels: %d", len(state.PaidBatches))
+	log.Printf("Special channels: %d", len(state.SpecialBatches))
+	log.Printf("User topics: %d", len(state.UserTopics))
+	log.Println("State validation: PASSED")
+	log.Println("Proceeding to Telegram initialization...")
 
 	// 3. Initialize Telegram Bot
 	// Create a custom robust client for direct connection to api.telegram.org

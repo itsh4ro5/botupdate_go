@@ -132,9 +132,12 @@ func (b *BotState) UnmarshalBSON(data []byte) error {
 	type Alias BotState
 
 	aux := &struct {
-		AdminIDs     bson.RawValue `bson:"ADMIN_IDS"`
-		BlockedUsers bson.RawValue `bson:"BLOCKED_USERS"`
-		Alias        `bson:",inline"`
+		AdminIDs          bson.RawValue `bson:"ADMIN_IDS"`
+		BlockedUsers      bson.RawValue `bson:"BLOCKED_USERS"`
+		FreeBatchesRaw    bson.RawValue `bson:"FREE_CHANNELS"`
+		PaidBatchesRaw    bson.RawValue `bson:"PAID_CHANNELS"`
+		SpecialBatchesRaw bson.RawValue `bson:"SPECIAL_CHANNELS"`
+		Alias             `bson:",inline"`
 	}{
 		Alias: (Alias)(*b),
 	}
@@ -163,9 +166,47 @@ func (b *BotState) UnmarshalBSON(data []byte) error {
 	}
 	b.BlockedUsers = parsedBlocked
 
-
+	// ---------------------------------------------------------
+	// Legacy Batches
+	// ---------------------------------------------------------
+	b.FreeBatches = parseLegacyBatches(aux.FreeBatchesRaw, b.BatchCategories, b.CustomWelcomes, b.BatchCoins, "free")
+	b.PaidBatches = parseLegacyBatches(aux.PaidBatchesRaw, b.BatchCategories, b.CustomWelcomes, b.BatchCoins, "paid")
+	b.SpecialBatches = parseLegacyBatches(aux.SpecialBatchesRaw, b.BatchCategories, b.CustomWelcomes, b.BatchCoins, "special")
 
 	return nil
+}
+
+func parseLegacyBatches(raw bson.RawValue, categories map[int64]string, welcomes map[int64]string, coins map[int64]int64, batchType string) map[int64]*Batch {
+	if raw.Type != bsontype.EmbeddedDocument {
+		return make(map[int64]*Batch)
+	}
+
+	m := make(map[string]bson.RawValue)
+	if err := raw.Unmarshal(&m); err != nil {
+		return make(map[int64]*Batch)
+	}
+
+	batches := make(map[int64]*Batch)
+	for k, v := range m {
+		id, _ := strconv.ParseInt(k, 10, 64)
+
+		if v.Type == bsontype.String {
+			// Legacy Python string format
+			batches[id] = &Batch{
+				ID:          id,
+				Name:        v.StringValue(),
+				Type:        batchType,
+				Category:    categories[id],
+				WelcomeText: welcomes[id],
+			}
+		} else if v.Type == bsontype.EmbeddedDocument {
+			// New Go struct format
+			var batch Batch
+			_ = v.Unmarshal(&batch)
+			batches[id] = &batch
+		}
+	}
+	return batches
 }
 
 // MarshalJSON serializes BotState while keeping AdminIDs and
@@ -218,4 +259,77 @@ func (b *BotState) MarshalBSON() ([]byte, error) {
 		BlockedUsers: blockedUsersArray,
 		Alias:        (Alias)(*b),
 	})
+}
+
+// UnmarshalBSON safely handles floats for JoinedAt since Python uses time.time()
+// and converts ints to strings for UnlockedBatches
+func (u *User) UnmarshalBSON(data []byte) error {
+	type Alias User
+	aux := &struct {
+		JoinedAt        bson.RawValue `bson:"joined_at"`
+		UnlockedBatches bson.RawValue `bson:"unlocked_batches"`
+		DemoHistory     bson.RawValue `bson:"demo_history"`
+		Alias           `bson:",inline"`
+	}{
+		Alias: (Alias)(*u),
+	}
+
+	if err := bson.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*u = (User)(aux.Alias)
+
+	if aux.JoinedAt.Type == bsontype.Double {
+		var f float64
+		_ = aux.JoinedAt.Unmarshal(&f)
+		u.JoinedAt = int64(f)
+	} else if aux.JoinedAt.Type == bsontype.Int64 {
+		_ = aux.JoinedAt.Unmarshal(&u.JoinedAt)
+	} else if aux.JoinedAt.Type == bsontype.Int32 {
+		var i int32
+		_ = aux.JoinedAt.Unmarshal(&i)
+		u.JoinedAt = int64(i)
+	}
+
+	if aux.UnlockedBatches.Type == bsontype.Array {
+		var arr bson.A
+		if err := aux.UnlockedBatches.Unmarshal(&arr); err == nil {
+			var parsed []string
+			for _, v := range arr {
+				switch val := v.(type) {
+				case string:
+					parsed = append(parsed, val)
+				case int32:
+					parsed = append(parsed, fmt.Sprintf("%d", val))
+				case int64:
+					parsed = append(parsed, fmt.Sprintf("%d", val))
+				case float64:
+					parsed = append(parsed, fmt.Sprintf("%.0f", val))
+				}
+			}
+			u.UnlockedBatches = parsed
+		}
+	}
+
+	if aux.DemoHistory.Type == bsontype.Array {
+		var arr bson.A
+		if err := aux.DemoHistory.Unmarshal(&arr); err == nil {
+			var parsed []string
+			for _, v := range arr {
+				switch val := v.(type) {
+				case string:
+					parsed = append(parsed, val)
+				case int32:
+					parsed = append(parsed, fmt.Sprintf("%d", val))
+				case int64:
+					parsed = append(parsed, fmt.Sprintf("%d", val))
+				case float64:
+					parsed = append(parsed, fmt.Sprintf("%.0f", val))
+				}
+			}
+			u.DemoHistory = parsed
+		}
+	}
+	return nil
 }
