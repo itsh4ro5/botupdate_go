@@ -24,7 +24,6 @@ type Config struct {
 	MandatoryChannelLink   string
 	MongoURL               string
 	DataFile               string
-	CustomBaseURL          string
 }
 
 // Load reads configuration from environment variables
@@ -54,7 +53,6 @@ func Load() (*Config, error) {
 		MandatoryChannelLink:   os.Getenv("MANDATORY_CHANNEL_LINK"),
 		MongoURL:               os.Getenv("MONGO_URL"),
 		DataFile:               os.Getenv("DATA_FILE"),
-		CustomBaseURL:          os.Getenv("CUSTOM_BASE_URL"),
 	}
 
 	if cfg.DataFile == "" {

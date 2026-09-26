@@ -14,8 +14,6 @@ import (
 // It enforces strict timeouts on DNS, TLS Handshakes, and Keep-Alives.
 func NewHTTPClient() *http.Client {
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			dialer := &net.Dialer{
 				Timeout:   30 * time.Second,

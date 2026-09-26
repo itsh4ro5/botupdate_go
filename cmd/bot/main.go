@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -56,41 +54,29 @@ func main() {
 	log.Printf("Loaded state with %d users and %d free batches", len(state.Users), len(state.FreeBatches))
 
 	// 3. Initialize Telegram Bot
-	// Hugging Face Spaces par TLS Handshake timeout fix karne ke liye HTTP/2 disable kar rahe hain
-	hfTransport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+	// Create a custom robust client for direct connection to api.telegram.org
+	transport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   60 * time.Second,
 			KeepAlive: 60 * time.Second,
 		}).DialContext,
-		TLSHandshakeTimeout: 60 * time.Second, // Timeout badha diya gaya hai
-		ForceAttemptHTTP2:   false,            // CRITICAL FIX: HF proxy HTTP/2 par hang hota hai
+		TLSHandshakeTimeout: 60 * time.Second,
+		ForceAttemptHTTP2:   false, // CRITICAL FIX: HF proxy HTTP/2 par hang hota hai
 	}
 
-	hfClient := &http.Client{
-		Transport: hfTransport,
+	httpClient := &http.Client{
+		Transport: transport,
 		Timeout:   90 * time.Second,
 	}
 
 	interceptor := &telegram.UpdateInterceptor{
-		Client: hfClient,
+		Client: httpClient,
 	}
 
 	apiEndpoint := tgbotapi.APIEndpoint
-	if cfg.CustomBaseURL != "" {
-		cfg.CustomBaseURL = strings.TrimRight(cfg.CustomBaseURL, "/")
-		apiEndpoint = cfg.CustomBaseURL + "/bot%s/%s"
-	}
-
-	// Diagnostic connectivity check (Naye HF optimized client ke sath)
-	log.Println("Running HuggingFace optimized diagnostic check...")
-	diagReq, _ := http.NewRequest("GET", fmt.Sprintf(apiEndpoint, cfg.TelegramBotToken, "getMe"), nil)
-	if diagResp, diagErr := hfClient.Do(diagReq); diagErr == nil {
-		log.Printf("Diagnostic SUCCESS: HTTP %d", diagResp.StatusCode)
-		diagResp.Body.Close()
-	} else {
-		log.Printf("Diagnostic warning: %v", diagErr)
-	}
+	
+	// Diagnostic connectivity check
+	telegram.TestConnectivity("https://api.telegram.org/bot<REDACTED>/getMe")
 
 	var bot *tgbotapi.BotAPI
 	var botErr error
@@ -121,7 +107,7 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	// API Client for internal services
-	apiClient := telegram.NewAPIClient(bot.Token, cfg.CustomBaseURL)
+	apiClient := telegram.NewAPIClient(bot.Token)
 
 	// 5. Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

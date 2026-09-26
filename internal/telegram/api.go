@@ -6,25 +6,19 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 // APIClient is a helper to make raw requests for methods missing from tgbotapi
 type APIClient struct {
 	Token   string
-	BaseURL string
 }
 
-func NewAPIClient(token, baseURL string) *APIClient {
-	if baseURL == "" {
-		baseURL = "https://api.telegram.org"
-	}
-	baseURL = strings.TrimRight(baseURL, "/")
-	return &APIClient{Token: token, BaseURL: baseURL}
+func NewAPIClient(token string) *APIClient {
+	return &APIClient{Token: token}
 }
 
 func (c *APIClient) doRequest(method string, payload interface{}) (map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/bot%s/%s", c.BaseURL, c.Token, method)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", c.Token, method)
 
 	var buf bytes.Buffer
 	if payload != nil {
