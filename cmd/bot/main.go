@@ -86,7 +86,7 @@ func main() {
 	apiEndpoint := tgbotapi.APIEndpoint
 	
 	// Diagnostic connectivity check
-	telegram.TestConnectivity("https://api.telegram.org/bot<REDACTED>/getMe")
+	telegram.TestConnectivity("https://api.telegram.org/bot" + cfg.TelegramBotToken + "/getMe")
 
 	var bot *tgbotapi.BotAPI
 	var botErr error
