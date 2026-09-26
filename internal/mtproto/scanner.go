@@ -227,7 +227,11 @@ func (s *Service) ScanBatch(ctx context.Context, chatID int64, progressCallback 
 		return "", err
 	}
 
-	// Mocking Firestore save because Firebase config isn't implemented in Go env yet.
-	log.Printf("Simulating Firestore Save: %d videos, %d PDFs scanned for %s", finalData.TotalVideos, finalData.TotalPDFs, finalData.ChannelName)
+	err = s.store.SaveBatchContents(ctx, finalData.ChatID, finalData)
+	if err != nil {
+		log.Printf("Failed to save batch contents to database: %v", err)
+	}
+
+	log.Printf("Saved Batch Contents: %d videos, %d PDFs scanned for %s", finalData.TotalVideos, finalData.TotalPDFs, finalData.ChannelName)
 	return fmt.Sprintf("✅ Scan Complete! Videos: %d, PDFs: %d", finalData.TotalVideos, finalData.TotalPDFs), nil
 }

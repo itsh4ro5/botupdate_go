@@ -175,3 +175,9 @@ func (s *JSONStore) RemoveBatch(ctx context.Context, id int64) error {
 		delete(state.BatchCoins, id)
 	})
 }
+
+func (s *JSONStore) SaveBatchContents(ctx context.Context, chatID string, data interface{}) error {
+	// JSON fallback mock
+	return nil
+}
+

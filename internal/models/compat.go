@@ -86,14 +86,15 @@ func (b *BotState) UnmarshalJSON(data []byte) error {
 	aux := &struct {
 		AdminIDs     json.RawMessage `json:"admin_ids"`
 		BlockedUsers json.RawMessage `json:"blocked_users"`
-		*Alias
+		Alias        `json:",inline"`
 	}{
-		Alias: (*Alias)(b),
+		Alias: (Alias)(*b),
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
+	*b = (BotState)(aux.Alias)
 
 	if aux.AdminIDs != nil {
 		parsed, err := parseIntSetFromJSON(aux.AdminIDs)
@@ -124,14 +125,15 @@ func (b *BotState) UnmarshalBSON(data []byte) error {
 	aux := &struct {
 		AdminIDs     bson.RawValue `bson:"admin_ids"`
 		BlockedUsers bson.RawValue `bson:"blocked_users"`
-		*Alias
+		Alias        `bson:",inline"`
 	}{
-		Alias: (*Alias)(b),
+		Alias: (Alias)(*b),
 	}
 
 	if err := bson.Unmarshal(data, &aux); err != nil {
 		return err
 	}
+	*b = (BotState)(aux.Alias)
 
 	parsedAdmins, err := parseIntSetFromBSON(aux.AdminIDs)
 	if err != nil {
@@ -164,11 +166,11 @@ func (b *BotState) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		AdminIDs     []int64 `json:"admin_ids"`
 		BlockedUsers []int64 `json:"blocked_users"`
-		*Alias
+		Alias        `json:",inline"`
 	}{
 		AdminIDs:     adminIDsArray,
 		BlockedUsers: blockedUsersArray,
-		Alias:        (*Alias)(b),
+		Alias:        (Alias)(*b),
 	})
 }
 
@@ -188,10 +190,10 @@ func (b *BotState) MarshalBSON() ([]byte, error) {
 	return bson.Marshal(&struct {
 		AdminIDs     []int64 `bson:"admin_ids"`
 		BlockedUsers []int64 `bson:"blocked_users"`
-		*Alias
+		Alias        `bson:",inline"`
 	}{
 		AdminIDs:     adminIDsArray,
 		BlockedUsers: blockedUsersArray,
-		Alias:        (*Alias)(b),
+		Alias:        (Alias)(*b),
 	})
 }

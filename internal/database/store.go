@@ -42,6 +42,9 @@ type Store interface {
 	SetMessageMapping(ctx context.Context, key string, val string) error
 	RemoveMessageMapping(ctx context.Context, key string) error
 
+	// Batch Analytics / Firebase port
+	SaveBatchContents(ctx context.Context, chatID string, data interface{}) error
+
 	// Dashboard Analytics (Read-only)
 	GetDashboardOverview(ctx context.Context) (*models.DashboardOverview, error)
 }

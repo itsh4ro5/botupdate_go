@@ -14,9 +14,10 @@ import (
 )
 
 type MongoStore struct {
-	mu         sync.RWMutex
-	client     *mongo.Client
-	collection *mongo.Collection
+	mu                      sync.RWMutex
+	client                  *mongo.Client
+	collection              *mongo.Collection
+	batchContentsCollection *mongo.Collection
 }
 
 func NewMongoStore(ctx context.Context, uri string) (*MongoStore, error) {
@@ -36,10 +37,12 @@ func NewMongoStore(ctx context.Context, uri string) (*MongoStore, error) {
 	}
 
 	collection := client.Database("telegram_bot_db").Collection("bot_settings")
+	batchContentsCollection := client.Database("telegram_bot_db").Collection("batch_contents")
 
 	return &MongoStore{
-		client:     client,
-		collection: collection,
+		client:                  client,
+		collection:              collection,
+		batchContentsCollection: batchContentsCollection,
 	}, nil
 }
 
@@ -60,8 +63,8 @@ func (m *MongoStore) Load(ctx context.Context) (*models.BotState, error) {
 	defer m.mu.RUnlock()
 
 	var doc struct {
-		ID   string           `bson:"_id"`
-		Data *models.BotState `bson:"data"`
+		ID   string          `bson:"_id"`
+		Data models.BotState `bson:"data"`
 	}
 
 	err := m.collection.FindOne(ctx, bson.M{"_id": "main_settings"}).Decode(&doc)
@@ -72,10 +75,7 @@ func (m *MongoStore) Load(ctx context.Context) (*models.BotState, error) {
 		return nil, fmt.Errorf("failed to load state from mongo: %w", err)
 	}
 
-	state := doc.Data
-	if state == nil {
-		state = m.emptyState()
-	}
+	state := &doc.Data
 
 	// Initialize maps if they are nil
 	if state.AdminIDs == nil {
@@ -267,3 +267,16 @@ func (m *MongoStore) GetDashboardOverview(ctx context.Context) (*models.Dashboar
 	// other system statuses are handled by the controller
 	return overview, nil
 }
+
+func (m *MongoStore) SaveBatchContents(ctx context.Context, chatID string, data interface{}) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	opts := options.Update().SetUpsert(true)
+	filter := bson.M{"_id": chatID}
+	update := bson.M{"$set": data}
+
+	_, err := m.batchContentsCollection.UpdateOne(ctx, filter, update, opts)
+	return err
+}
+

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -18,10 +17,44 @@ type MsgKey struct {
 	MsgID  int
 }
 
-var (
-	messageMap = make(map[MsgKey]MsgKey)
-	msgMapMu   sync.RWMutex
-)
+
+
+
+func (r *Router) setMapping(ctx context.Context, k1, k2 MsgKey) {
+	state, err := r.store.Load(ctx)
+	if err != nil { return }
+	if state.MessageMap == nil {
+		state.MessageMap = make(map[string]string)
+	}
+	key1 := fmt.Sprintf("%d_%d", k1.ChatID, k1.MsgID)
+	key2 := fmt.Sprintf("%d_%d", k2.ChatID, k2.MsgID)
+	state.MessageMap[key1] = key2
+	state.MessageMap[key2] = key1
+	r.store.Save(ctx, state)
+}
+
+func (r *Router) getMapping(ctx context.Context, k MsgKey) (MsgKey, bool) {
+	state, err := r.store.Load(ctx)
+	if err != nil || state.MessageMap == nil { return MsgKey{}, false }
+	key := fmt.Sprintf("%d_%d", k.ChatID, k.MsgID)
+	val, ok := state.MessageMap[key]
+	if !ok { return MsgKey{}, false }
+	var chatID int64
+	var msgID int
+	fmt.Sscanf(val, "%d_%d", &chatID, &msgID)
+	return MsgKey{ChatID: chatID, MsgID: msgID}, true
+}
+
+func (r *Router) delMapping(ctx context.Context, k MsgKey) {
+	state, err := r.store.Load(ctx)
+	if err != nil || state.MessageMap == nil { return }
+	key1 := fmt.Sprintf("%d_%d", k.ChatID, k.MsgID)
+	val, ok := state.MessageMap[key1]
+	if !ok { return }
+	delete(state.MessageMap, key1)
+	delete(state.MessageMap, val)
+	r.store.Save(ctx, state)
+}
 
 func (r *Router) handlePrivateMessage(ctx context.Context, msg *tgbotapi.Message) {
 	topic, err := r.support.EnsureTopic(ctx, msg.From, false)
@@ -34,12 +67,10 @@ func (r *Router) handlePrivateMessage(ctx context.Context, msg *tgbotapi.Message
 	copyMsg.ReplyToMessageID = topic.MessageThread
 
 	if msg.ReplyToMessage != nil {
-		msgMapMu.RLock()
 		userKey := MsgKey{ChatID: msg.Chat.ID, MsgID: msg.ReplyToMessage.MessageID}
-		if suppKey, ok := messageMap[userKey]; ok {
+		if suppKey, ok := r.getMapping(ctx, userKey); ok {
 			copyMsg.ReplyToMessageID = suppKey.MsgID
 		}
-		msgMapMu.RUnlock()
 	}
 
 	sentMsg, err := r.bot.CopyMessage(copyMsg)
@@ -47,17 +78,8 @@ func (r *Router) handlePrivateMessage(ctx context.Context, msg *tgbotapi.Message
 		userKey := MsgKey{ChatID: msg.Chat.ID, MsgID: msg.MessageID}
 		suppKey := MsgKey{ChatID: r.support.GetSupportGroupID(), MsgID: sentMsg.MessageID}
 
-		msgMapMu.Lock()
-		messageMap[userKey] = suppKey
-		messageMap[suppKey] = userKey
-
-		log.Printf("==== PHASE 2: MESSAGE MAP CREATION ====")
-		log.Printf("USER MESSAGE: chat_id=%d message_id=%d", userKey.ChatID, userKey.MsgID)
-		log.Printf("SUPPORT COPY: chat_id=%d message_id=%d thread_id=%d", suppKey.ChatID, suppKey.MsgID, copyMsg.ReplyToMessageID)
+		r.setMapping(ctx, userKey, suppKey)
 		log.Printf("MAPPING CREATED: suppKey={%d, %d} targetKey={%d, %d}", suppKey.ChatID, suppKey.MsgID, userKey.ChatID, userKey.MsgID)
-		log.Printf("=======================================")
-
-		msgMapMu.Unlock()
 
 		supportMsg := &models.SupportMessage{
 			ID:             int64(msg.MessageID),
@@ -101,12 +123,10 @@ func (r *Router) handleSupportReply(ctx context.Context, msg *tgbotapi.Message) 
 	if msg.ReplyToMessage != nil {
 		replyToSupportMsgID := msg.ReplyToMessage.MessageID
 		suppKey := MsgKey{ChatID: msg.Chat.ID, MsgID: replyToSupportMsgID}
-		msgMapMu.RLock()
-		if mappedKey, ok := messageMap[suppKey]; ok {
+		if mappedKey, ok := r.getMapping(ctx, suppKey); ok {
 			targetUserID = mappedKey.ChatID
 			userMsgID = mappedKey.MsgID
 		}
-		msgMapMu.RUnlock()
 	}
 
 	if targetUserID == 0 {
@@ -128,13 +148,7 @@ func (r *Router) handleSupportReply(ctx context.Context, msg *tgbotapi.Message) 
 		suppKey := MsgKey{ChatID: msg.Chat.ID, MsgID: msg.MessageID}
 		userKey := MsgKey{ChatID: targetUserID, MsgID: sentMsg.MessageID}
 
-		msgMapMu.Lock()
-		messageMap[suppKey] = userKey
-		messageMap[userKey] = suppKey
-		if len(messageMap) > 10000 {
-			messageMap = make(map[MsgKey]MsgKey)
-		}
-		msgMapMu.Unlock()
+		r.setMapping(ctx, suppKey, userKey)
 
 		events.Publish(events.TypeSupportMessage, events.SeverityInfo, map[string]interface{}{
 			"user_id":   targetUserID,
@@ -177,18 +191,13 @@ func (r *Router) HandleDelMessage(ctx context.Context, msg *tgbotapi.Message) {
 	log.Printf("reply message ID = %d", msg.ReplyToMessage.MessageID)
 	log.Printf("calculated suppKey = {%d, %d}", suppKey.ChatID, suppKey.MsgID)
 
-	msgMapMu.RLock()
-	targetKey, exists := messageMap[suppKey]
+	targetKey, exists := r.getMapping(ctx, suppKey)
 
 	log.Printf("mapping found = %v", exists)
 	if !exists {
 		log.Printf("==== PHASE 4: IF MAPPING IS NOT FOUND ====")
-		log.Printf("ALL CURRENT KEYS IN MAP:")
-		for k, v := range messageMap {
-			log.Printf("Key={%d, %d} -> Val={%d, %d}", k.ChatID, k.MsgID, v.ChatID, v.MsgID)
-		}
+		log.Printf("ALL CURRENT KEYS IN MAP: (omitted for persistent map)")
 	}
-	msgMapMu.RUnlock()
 
 	if exists {
 		log.Printf("==== PHASE 5: IF MAPPING IS FOUND ====")
@@ -220,10 +229,7 @@ func (r *Router) HandleDelMessage(ctx context.Context, msg *tgbotapi.Message) {
 		_, errCmd := r.bot.Request(tgbotapi.NewDeleteMessage(msg.Chat.ID, msg.MessageID))
 		log.Printf("COMMAND DELETE = %v", errCmd == nil)
 
-		msgMapMu.Lock()
-		delete(messageMap, suppKey)
-		delete(messageMap, targetKey)
-		msgMapMu.Unlock()
+		r.delMapping(ctx, suppKey)
 		log.Printf("MAP CLEANUP = SUCCESS")
 	} else {
 		log.Printf("Not deleting user message since mapping is lost. Attempting support delete only.")
@@ -234,9 +240,7 @@ func (r *Router) HandleDelMessage(ctx context.Context, msg *tgbotapi.Message) {
 
 func (r *Router) handleEditedMessage(ctx context.Context, msg *tgbotapi.Message) {
 	key := MsgKey{ChatID: msg.Chat.ID, MsgID: msg.MessageID}
-	msgMapMu.RLock()
-	targetKey, exists := messageMap[key]
-	msgMapMu.RUnlock()
+	targetKey, exists := r.getMapping(ctx, key)
 
 	if !exists {
 		return
@@ -265,9 +269,7 @@ func (r *Router) HandleReaction(ctx context.Context, reaction *models.MessageRea
 
 	key := MsgKey{ChatID: reaction.Chat.ID, MsgID: reaction.MessageID}
 
-	msgMapMu.RLock()
-	targetKey, exists := messageMap[key]
-	msgMapMu.RUnlock()
+	targetKey, exists := r.getMapping(ctx, key)
 
 	if !exists {
 		// Not tracked, ignore
