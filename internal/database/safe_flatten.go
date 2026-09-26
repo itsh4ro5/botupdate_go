@@ -16,7 +16,7 @@ func safeFlatten(state *models.BotState) (bson.M, error) {
 	if err := bson.Unmarshal(b, &doc); err != nil {
 		return nil, err
 	}
-	
+
 	flattened := bson.M{}
 	for k, v := range doc {
 		flattened["data."+k] = v

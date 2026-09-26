@@ -1,10 +1,10 @@
 package database
 
 import (
-	"testing"
 	"github.com/itsh4ro5/botupdate/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"testing"
 )
 
 func TestPythonGoMigrationSafety(t *testing.T) {
@@ -66,7 +66,7 @@ func TestPythonGoMigrationSafety(t *testing.T) {
 	if _, ok := updateDoc["data"]; ok {
 		t.Errorf("CRITICAL FAILURE: safeFlatten returned 'data' as a root key. This will DROP all legacy Python fields!")
 	}
-	
+
 	// Ensure it uses the compat serializer for AdminIDs (arrays)
 	adminIDsInterface := updateDoc["data.admin_ids"]
 	adminIDsSlice, ok := adminIDsInterface.(primitive.A)
@@ -78,8 +78,12 @@ func TestPythonGoMigrationSafety(t *testing.T) {
 	found999 := false
 	for _, idInterface := range adminIDsSlice {
 		id, _ := idInterface.(int64)
-		if id == 555 { found555 = true }
-		if id == 999 { found999 = true }
+		if id == 555 {
+			found555 = true
+		}
+		if id == 999 {
+			found999 = true
+		}
 	}
 	if !found555 || !found999 {
 		t.Errorf("Mutated admin_id 555 or existing 999 not found in serialized array")

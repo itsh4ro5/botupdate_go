@@ -279,4 +279,3 @@ func (m *MongoStore) SaveBatchContents(ctx context.Context, chatID string, data 
 	_, err := m.batchContentsCollection.UpdateOne(ctx, filter, update, opts)
 	return err
 }
-

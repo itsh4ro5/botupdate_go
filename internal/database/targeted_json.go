@@ -180,4 +180,3 @@ func (s *JSONStore) SaveBatchContents(ctx context.Context, chatID string, data i
 	// JSON fallback mock
 	return nil
 }
-

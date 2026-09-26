@@ -17,12 +17,11 @@ type MsgKey struct {
 	MsgID  int
 }
 
-
-
-
 func (r *Router) setMapping(ctx context.Context, k1, k2 MsgKey) {
 	state, err := r.store.Load(ctx)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	if state.MessageMap == nil {
 		state.MessageMap = make(map[string]string)
 	}
@@ -35,10 +34,14 @@ func (r *Router) setMapping(ctx context.Context, k1, k2 MsgKey) {
 
 func (r *Router) getMapping(ctx context.Context, k MsgKey) (MsgKey, bool) {
 	state, err := r.store.Load(ctx)
-	if err != nil || state.MessageMap == nil { return MsgKey{}, false }
+	if err != nil || state.MessageMap == nil {
+		return MsgKey{}, false
+	}
 	key := fmt.Sprintf("%d_%d", k.ChatID, k.MsgID)
 	val, ok := state.MessageMap[key]
-	if !ok { return MsgKey{}, false }
+	if !ok {
+		return MsgKey{}, false
+	}
 	var chatID int64
 	var msgID int
 	fmt.Sscanf(val, "%d_%d", &chatID, &msgID)
@@ -47,10 +50,14 @@ func (r *Router) getMapping(ctx context.Context, k MsgKey) (MsgKey, bool) {
 
 func (r *Router) delMapping(ctx context.Context, k MsgKey) {
 	state, err := r.store.Load(ctx)
-	if err != nil || state.MessageMap == nil { return }
+	if err != nil || state.MessageMap == nil {
+		return
+	}
 	key1 := fmt.Sprintf("%d_%d", k.ChatID, k.MsgID)
 	val, ok := state.MessageMap[key1]
-	if !ok { return }
+	if !ok {
+		return
+	}
 	delete(state.MessageMap, key1)
 	delete(state.MessageMap, val)
 	r.store.Save(ctx, state)

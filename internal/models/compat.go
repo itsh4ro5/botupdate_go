@@ -13,9 +13,9 @@ func parseIntSetFromJSON(raw json.RawMessage) (map[int64]struct{}, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return make(map[int64]struct{}), nil
 	}
-	
+
 	res := make(map[int64]struct{})
-	
+
 	// Try parsing as array first (legacy Python list)
 	var arr []int64
 	if err := json.Unmarshal(raw, &arr); err == nil {
@@ -24,7 +24,7 @@ func parseIntSetFromJSON(raw json.RawMessage) (map[int64]struct{}, error) {
 		}
 		return res, nil
 	}
-	
+
 	// Try parsing as map[string]struct{} or map[int64]struct{}
 	var m map[string]interface{}
 	if err := json.Unmarshal(raw, &m); err == nil {
@@ -152,7 +152,7 @@ func (b *BotState) UnmarshalBSON(data []byte) error {
 
 func (b *BotState) MarshalJSON() ([]byte, error) {
 	type Alias BotState
-	
+
 	adminIDsArray := make([]int64, 0, len(b.AdminIDs))
 	for id := range b.AdminIDs {
 		adminIDsArray = append(adminIDsArray, id)
@@ -176,7 +176,7 @@ func (b *BotState) MarshalJSON() ([]byte, error) {
 
 func (b *BotState) MarshalBSON() ([]byte, error) {
 	type Alias BotState
-	
+
 	adminIDsArray := make([]int64, 0, len(b.AdminIDs))
 	for id := range b.AdminIDs {
 		adminIDsArray = append(adminIDsArray, id)
