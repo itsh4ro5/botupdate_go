@@ -61,10 +61,12 @@ func NewHTTPClient() *http.Client {
 
 		TLSHandshakeTimeout: 15 * time.Second,
 
-		ForceAttemptHTTP2:   true,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100,
-		IdleConnTimeout:     90 * time.Second,
+		ForceAttemptHTTP2:   false, // CRITICAL: HF proxy HTTP/2 hangs while awaiting headers
+		DisableKeepAlives:   true,  // Avoid stale pooled connections
+
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     30 * time.Second,
 
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
@@ -149,28 +151,38 @@ func TestConnectivity(targetURL string) {
 	}
 	log.Printf("TLS: PASS (%v) [%x]", time.Since(tlsStart), tlsConn.ConnectionState().Version)
 
-	// 5. HTTP GET (Diagnostic)
-	httpStart := time.Now()
+	// 5. HTTP Diagnostic Tests
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.DialTimeout("tcp4", addr, 5*time.Second) // Force IPv4 for this HTTP check
+				return net.DialTimeout("tcp4", addr, 5*time.Second) // Force IPv4
 			},
 			TLSHandshakeTimeout: 5 * time.Second,
 			TLSClientConfig: &tls.Config{
-				ServerName:         "",
+				ServerName:         "", // SNI bypass
 				InsecureSkipVerify: true,
 			},
+			ForceAttemptHTTP2: false, // Ensure HTTP/1.1
+			DisableKeepAlives: true,  // Fresh connection per request
 		},
 	}
 
-	req, _ := http.NewRequest("GET", targetURL, nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("HTTP: FAIL (%v)", err)
-		return
+	runHTTPTest := func(name, method, url string) {
+		httpStart := time.Now()
+		req, _ := http.NewRequest(method, url, nil)
+		req.Close = true // Connection: close
+		
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("HTTP %s: FAIL (%v) [Elapsed: %v]", name, err, time.Since(httpStart))
+			return
+		}
+		defer resp.Body.Close()
+		log.Printf("HTTP %s: PASS [Status: %d] [Elapsed: %v]", name, resp.StatusCode, time.Since(httpStart))
 	}
-	defer resp.Body.Close()
-	log.Printf("HTTP: PASS (%v) [Status: %d]", time.Since(httpStart), resp.StatusCode)
+
+	runHTTPTest("GET root", "GET", "https://api.telegram.org/")
+	runHTTPTest("GET getMe", "GET", targetURL)
+	runHTTPTest("POST getMe", "POST", targetURL)
 }
