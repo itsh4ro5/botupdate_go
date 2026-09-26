@@ -10,11 +10,15 @@ import (
 
 // APIClient is a helper to make raw requests for methods missing from tgbotapi
 type APIClient struct {
-	Token   string
+	Token      string
+	HTTPClient *http.Client
 }
 
 func NewAPIClient(token string) *APIClient {
-	return &APIClient{Token: token}
+	return &APIClient{
+		Token:      token,
+		HTTPClient: NewHTTPClient(),
+	}
 }
 
 func (c *APIClient) doRequest(method string, payload interface{}) (map[string]interface{}, error) {
@@ -33,8 +37,8 @@ func (c *APIClient) doRequest(method string, payload interface{}) (map[string]in
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// Use our robust client
-	resp, err := NewHTTPClient().Do(req)
+	// Reuse the robust client to prevent socket exhaustion
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
