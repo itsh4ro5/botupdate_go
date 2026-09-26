@@ -1,0 +1,9 @@
+.git
+.github
+web/node_modules
+web/dist
+docs
+*.exe
+*.log
+.env
+.env.example
