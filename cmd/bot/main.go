@@ -3,10 +3,9 @@ package main
 import (
 	"context"
 	"log"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -64,47 +63,64 @@ func main() {
 	log.Println("Proceeding to Telegram initialization...")
 
 	// 3. Initialize Telegram Bot
-	// Create a custom robust client for direct connection to api.telegram.org
-	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   60 * time.Second,
-			KeepAlive: 60 * time.Second,
-		}).DialContext,
-		TLSHandshakeTimeout: 60 * time.Second,
-		ForceAttemptHTTP2:   false, // CRITICAL FIX: HF proxy HTTP/2 par hang hota hai
-	}
-
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   90 * time.Second,
-	}
-
+	httpClient := telegram.NewHTTPClient()
 	interceptor := &telegram.UpdateInterceptor{
 		Client: httpClient,
 	}
 
 	apiEndpoint := tgbotapi.APIEndpoint
-	
+
 	// Diagnostic connectivity check
 	telegram.TestConnectivity("https://api.telegram.org/bot" + cfg.TelegramBotToken + "/getMe")
 
 	var bot *tgbotapi.BotAPI
 	var botErr error
 
-	// Exponential backoff for initial connection to prevent crash loops
-	for attempts := 1; attempts <= 5; attempts++ {
+	// Phase 5 & 6: Exponential backoff with jitter for transient network failures
+	maxAttempts := 30
+	baseDelay := 2 * time.Second
+	maxDelay := 60 * time.Second
+	startTime := time.Now()
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		bot, botErr = tgbotapi.NewBotAPIWithClient(cfg.TelegramBotToken, apiEndpoint, interceptor)
 		if botErr == nil {
 			break
 		}
-		log.Printf("Failed to create Telegram bot (attempt %d/5): %v", attempts, botErr)
-		if attempts < 5 {
-			time.Sleep(time.Duration(attempts*attempts) * time.Second)
-		}
-	}
 
-	if botErr != nil {
-		log.Fatalf("Fatal: could not connect to Telegram after 5 attempts: %v", botErr)
+		errStr := botErr.Error()
+
+		// Categorize error securely without leaking token
+		errCategory := "UNKNOWN_ERROR"
+		if strings.Contains(errStr, "timeout") {
+			errCategory = "TIMEOUT"
+		} else if strings.Contains(errStr, "TLS handshake") {
+			errCategory = "TLS_HANDSHAKE_FAILURE"
+		} else if strings.Contains(errStr, "connection reset") {
+			errCategory = "CONNECTION_RESET"
+		} else if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "lookup") {
+			errCategory = "DNS_FAILURE"
+		} else if strings.Contains(errStr, "401") || strings.Contains(errStr, "Unauthorized") {
+			log.Fatalf("Fatal: Unauthorized token. Halting retries.")
+		} else if strings.Contains(errStr, "net/http") {
+			errCategory = "NETWORK_FAILURE"
+		}
+
+		elapsed := time.Since(startTime).Round(time.Second)
+		log.Printf("Telegram init failed [Attempt %d/%d] [Elapsed: %v] [Category: %s]", attempt, maxAttempts, elapsed, errCategory)
+
+		if attempt == maxAttempts {
+			log.Fatalf("Fatal: could not connect to Telegram after %d attempts", maxAttempts)
+		}
+
+		// Calculate backoff with jitter
+		delay := baseDelay * time.Duration(1<<(attempt-1))
+		if delay > maxDelay || delay <= 0 {
+			delay = maxDelay
+		}
+		// add up to 20% jitter (using simple pseudo-random based on time to avoid importing math/rand if not needed)
+		jitter := time.Duration(time.Now().UnixNano()%200) * time.Millisecond
+		time.Sleep(delay + jitter)
 	}
 	bot.Debug = false
 	log.Printf("Authorized on account %s", bot.Self.UserName)
