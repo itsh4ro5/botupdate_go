@@ -168,7 +168,8 @@ func (r *Router) handleChatMember(ctx context.Context, update *tgbotapi.ChatMemb
 		if status == "left" || status == "kicked" || status == "banned" {
 			state, err := r.store.Load(ctx)
 			if err == nil {
-				r.scheduler.UniversalKick(ctx, update.From.ID, state)
+				targetUserID := update.NewChatMember.User.ID
+				r.scheduler.UniversalKick(ctx, targetUserID, state)
 			}
 		}
 	}
@@ -180,7 +181,8 @@ func (r *Router) handleMyChatMember(ctx context.Context, update *tgbotapi.ChatMe
 		if status == "kicked" || status == "banned" {
 			state, err := r.store.Load(ctx)
 			if err == nil {
-				r.scheduler.UniversalKick(ctx, update.From.ID, state)
+				targetUserID := update.NewChatMember.User.ID
+				r.scheduler.UniversalKick(ctx, targetUserID, state)
 			}
 		}
 	}

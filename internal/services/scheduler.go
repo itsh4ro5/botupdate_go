@@ -179,6 +179,14 @@ func (s *Scheduler) RunSync(ctx context.Context, cb func(string)) {
 		}
 
 		for uid, user := range state.Users {
+			// Respect shutdown signal to prevent zombie loops
+			select {
+			case <-ctx.Done():
+				log.Println("RunSync canceled by context (shutdown)")
+				return
+			default:
+			}
+
 			if _, blocked := state.BlockedUsers[uid]; blocked {
 				continue
 			}
@@ -216,6 +224,22 @@ func (s *Scheduler) RunSync(ctx context.Context, cb func(string)) {
 
 // UniversalKick removes a user from all known channels
 func (s *Scheduler) UniversalKick(ctx context.Context, uid int64, state *models.BotState) {
+	// 1. NEVER kick an admin
+	if _, isAdmin := state.AdminIDs[uid]; isAdmin {
+		log.Printf("UniversalKick aborted: User %d is an admin", uid)
+		return
+	}
+
+	// 2. NEVER kick the bot itself
+	if s.api != nil {
+		botIDStr := strings.Split(s.api.Token, ":")[0]
+		botID, _ := strconv.ParseInt(botIDStr, 10, 64)
+		if uid == botID {
+			log.Printf("CRITICAL: UniversalKick aborted to prevent bot self-ban (uid %d)", uid)
+			return
+		}
+	}
+
 	for cid := range state.AllChats {
 		_ = s.api.BanChatMember(cid, uid, 0, false)
 		time.Sleep(200 * time.Millisecond)
