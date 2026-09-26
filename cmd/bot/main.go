@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -54,11 +54,34 @@ func main() {
 
 	// 3. Initialize Telegram Bot
 	interceptor := &telegram.UpdateInterceptor{
-		Client: &http.Client{Timeout: 60 * time.Second}, // Match tgbotapi default timeout
+		Client: telegram.NewHTTPClient(), // Use our robust client
 	}
-	bot, err := tgbotapi.NewBotAPIWithClient(cfg.TelegramBotToken, tgbotapi.APIEndpoint, interceptor)
-	if err != nil {
-		log.Fatalf("Failed to create Telegram bot: %v", err)
+
+	apiEndpoint := tgbotapi.APIEndpoint
+	if cfg.CustomBaseURL != "" {
+		apiEndpoint = cfg.CustomBaseURL + "/bot%s/%s"
+	}
+	
+	// Diagnostic connectivity check
+	telegram.TestConnectivity(fmt.Sprintf(apiEndpoint, cfg.TelegramBotToken, "getMe"))
+
+	var bot *tgbotapi.BotAPI
+	var botErr error
+
+	// Exponential backoff for initial connection to prevent crash loops
+	for attempts := 1; attempts <= 5; attempts++ {
+		bot, botErr = tgbotapi.NewBotAPIWithClient(cfg.TelegramBotToken, apiEndpoint, interceptor)
+		if botErr == nil {
+			break
+		}
+		log.Printf("Failed to create Telegram bot (attempt %d/5): %v", attempts, botErr)
+		if attempts < 5 {
+			time.Sleep(time.Duration(attempts*attempts) * time.Second)
+		}
+	}
+
+	if botErr != nil {
+		log.Fatalf("Fatal: could not connect to Telegram after 5 attempts: %v", botErr)
 	}
 	bot.Debug = false
 	log.Printf("Authorized on account %s", bot.Self.UserName)
@@ -71,7 +94,7 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	// API Client for internal services
-	apiClient := telegram.NewAPIClient(bot.Token)
+	apiClient := telegram.NewAPIClient(bot.Token, cfg.CustomBaseURL)
 
 	// 5. Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -94,7 +117,7 @@ func main() {
 	mtprotoService := mtproto.NewService(int(cfg.APIID), cfg.APIHash, store)
 
 	// 6. Initialize Router
-	router := botmodule.NewRouter(bot, store, cfg.OwnerID, cfg.SupportGroupID, cfg.MandatoryChannelID, mtprotoService, scheduler, cfg.BatchUpdateChannelID)
+	router := botmodule.NewRouter(bot, apiClient, store, cfg.OwnerID, cfg.SupportGroupID, cfg.MandatoryChannelID, mtprotoService, scheduler, cfg.BatchUpdateChannelID)
 
 	// Link router to interceptor for reaction sync
 	interceptor.Handler = router

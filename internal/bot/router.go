@@ -51,19 +51,18 @@ type WizardState struct {
 	MessageID int
 }
 
-func NewRouter(bot *tgbotapi.BotAPI, store database.Store, ownerID int64, supportGroupID int64, mandatoryChannelID int64, mtprotoService *mtproto.Service, scheduler *services.Scheduler, batchUpdateChannelID int64) *Router {
-	apiClient := telegram.NewAPIClient(bot.Token)
+func NewRouter(bot *tgbotapi.BotAPI, api *telegram.APIClient, store database.Store, ownerID int64, supportGroupID int64, mandatoryChannelID int64, mtprotoService *mtproto.Service, scheduler *services.Scheduler, batchUpdateChannelID int64) *Router {
 	authService := NewAuthService(store, ownerID)
-	supportService := services.NewSupportService(bot, apiClient, store, supportGroupID)
+	supportService := services.NewSupportService(bot, api, store, supportGroupID)
 	return &Router{
 		bot:                  bot,
-		api:                  apiClient,
+		api:                  api,
 		store:                store,
 		auth:                 authService,
 		support:              supportService,
 		membership:           NewMembershipService(bot, authService, store, mandatoryChannelID),
 		mtproto:              mtprotoService,
-		batch:                services.NewBatchService(store, bot, apiClient, supportService),
+		batch:                services.NewBatchService(store, bot, api, supportService),
 		adminWizard:          make(map[int64]*WizardState),
 		scheduler:            scheduler,
 		batchUpdateChannelID: batchUpdateChannelID,
