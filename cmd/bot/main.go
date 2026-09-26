@@ -127,7 +127,7 @@ func main() {
 
 	// 4. Set up update channel
 	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
+	u.Timeout = 50 // Decreased to 50s to avoid Hugging Face 60s egress proxy idle timeout
 	u.AllowedUpdates = []string{"message", "edited_message", "callback_query", "chat_join_request", "chat_member", "my_chat_member", "message_reaction"}
 
 	updates := bot.GetUpdatesChan(u)

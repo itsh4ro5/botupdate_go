@@ -97,12 +97,13 @@ func NewHTTPClient() *http.Client {
 		IdleConnTimeout:     30 * time.Second,
 
 		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
+		// ResponseHeaderTimeout: MUST BE DISABLED OR > u.Timeout for long-polling!
+		ResponseHeaderTimeout: 65 * time.Second,
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   60 * time.Second, // Absolute maximum for the entire request
+		Timeout:   70 * time.Second, // Must be > Telegram getUpdates timeout (50s)
 	}
 }
 
