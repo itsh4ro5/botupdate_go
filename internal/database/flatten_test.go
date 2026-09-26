@@ -16,8 +16,8 @@ func TestPythonGoMigrationSafety(t *testing.T) {
 		{Key: "unknown_python_field", Value: "should_survive_go"},
 		{Key: "legacy_nested_map", Value: bson.D{{Key: "foo", Value: "bar"}}},
 		{Key: "data", Value: bson.D{
-			{Key: "admin_ids", Value: bson.A{int64(999), int64(888)}}, // Python stored arrays
-			{Key: "blocked_users", Value: bson.A{int64(777)}},
+			{Key: "ADMIN_IDS", Value: bson.A{int64(999), int64(888)}}, // Python stored arrays
+			{Key: "BLOCKED_USERS", Value: bson.A{int64(777)}},
 			{Key: "legacy_flashcards", Value: bson.A{"fc1", "fc2"}}, // Unknown to Go
 		}},
 	}
@@ -57,9 +57,9 @@ func TestPythonGoMigrationSafety(t *testing.T) {
 	}
 
 	// The safeFlatten produces a map[string]interface{} representing $set instructions
-	// Ensure it targets "data.admin_ids" directly
-	if _, ok := updateDoc["data.admin_ids"]; !ok {
-		t.Errorf("safeFlatten did not map AdminIDs correctly, missed data.admin_ids")
+	// Ensure it targets "data.ADMIN_IDS" directly
+	if _, ok := updateDoc["data.ADMIN_IDS"]; !ok {
+		t.Errorf("safeFlatten did not map AdminIDs correctly, missed data.ADMIN_IDS")
 	}
 
 	// Ensure that it does NOT overwrite "data" as a whole object
@@ -68,7 +68,7 @@ func TestPythonGoMigrationSafety(t *testing.T) {
 	}
 
 	// Ensure it uses the compat serializer for AdminIDs (arrays)
-	adminIDsInterface := updateDoc["data.admin_ids"]
+	adminIDsInterface := updateDoc["data.ADMIN_IDS"]
 	adminIDsSlice, ok := adminIDsInterface.(primitive.A)
 	if !ok {
 		t.Errorf("CRITICAL FAILURE: safeFlatten did not serialize AdminIDs to primitive.A. It returned %T.", adminIDsInterface)

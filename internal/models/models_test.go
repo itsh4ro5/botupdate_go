@@ -14,7 +14,7 @@ func TestSupportTopicUnmarshalBSONValue(t *testing.T) {
 		{
 			name: "Legacy int32",
 			bsonRaw: bson.M{
-				"user_topics": bson.M{
+				"USER_TOPICS": bson.M{
 					"8197649993": int32(5),
 				},
 			},
@@ -23,7 +23,7 @@ func TestSupportTopicUnmarshalBSONValue(t *testing.T) {
 		{
 			name: "Legacy int64",
 			bsonRaw: bson.M{
-				"user_topics": bson.M{
+				"USER_TOPICS": bson.M{
 					"8197649993": int64(10),
 				},
 			},
@@ -32,7 +32,7 @@ func TestSupportTopicUnmarshalBSONValue(t *testing.T) {
 		{
 			name: "Current SupportTopic struct",
 			bsonRaw: bson.M{
-				"user_topics": bson.M{
+				"USER_TOPICS": bson.M{
 					"8197649993": bson.M{
 						"user_id":           int64(8197649993),
 						"topic_id":          int32(15),
@@ -80,7 +80,7 @@ func TestSupportTopicEmptyMissing(t *testing.T) {
 	}
 
 	// Empty UserTopics
-	raw2 := bson.M{"user_topics": bson.M{}}
+	raw2 := bson.M{"USER_TOPICS": bson.M{}}
 	b2, _ := bson.Marshal(raw2)
 	var state2 BotState
 	if err := bson.Unmarshal(b2, &state2); err != nil {

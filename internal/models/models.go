@@ -119,6 +119,22 @@ func (s *SupportTopic) UnmarshalBSONValue(t bsontype.Type, data []byte) error {
 	}
 }
 
+// MarshalBSONValue serializes SupportTopic as a simple integer to maintain parity with Python.
+func (s *SupportTopic) MarshalBSONValue() (bsontype.Type, []byte, error) {
+	if s == nil {
+		return bsontype.Null, nil, nil
+	}
+	return bson.MarshalValue(s.TopicID)
+}
+
+// MarshalJSON serializes SupportTopic as a simple integer to maintain parity with Python.
+func (s *SupportTopic) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	return []byte(fmt.Sprintf("%d", s.TopicID)), nil
+}
+
 // PendingRequest represents a user's join request to a batch channel
 type PendingRequest struct {
 	UserID    int64     `json:"user_id" bson:"user_id"`
@@ -153,36 +169,36 @@ type SupportMessage struct {
 
 // BotState holds the full application state for JSON/Memory persistence
 type BotState struct {
-	AdminIDs         map[int64]struct{}         `json:"admin_ids" bson:"admin_ids"`
-	FreeBatches      map[int64]*Batch           `json:"free_batches" bson:"free_batches"`
-	PaidBatches      map[int64]*Batch           `json:"paid_batches" bson:"paid_batches"`
-	SpecialBatches   map[int64]*Batch           `json:"special_batches" bson:"special_batches"`
-	AllChats         map[int64]string           `json:"all_chats" bson:"all_chats"`
-	Users            map[int64]*User            `json:"users" bson:"users"`
-	BlockedUsers     map[int64]struct{}         `json:"blocked_users" bson:"blocked_users"`
-	UserTopics       map[int64]*SupportTopic    `json:"user_topics" bson:"user_topics"`
-	PendingRequests  map[string]*PendingRequest `json:"pending_requests" bson:"pending_requests"`
-	LinkMap          map[string]*InviteMapping  `json:"link_map" bson:"link_map"`
-	CustomWelcomes   map[int64]string           `json:"custom_welcomes" bson:"custom_welcomes"`
-	BatchCategories  map[int64]string           `json:"batch_categories" bson:"batch_categories"`
-	Categories       []string                   `json:"categories" bson:"categories"`
-	ScheduledDeletes []*ScheduledDelete         `json:"scheduled_deletes" bson:"scheduled_deletes"`
-	BatchCoins       map[int64]int64            `json:"batch_coins" bson:"batch_coins"`
+	AdminIDs         map[int64]struct{}         `json:"admin_ids" bson:"ADMIN_IDS"`
+	FreeBatches      map[int64]*Batch           `json:"free_batches" bson:"FREE_CHANNELS"`
+	PaidBatches      map[int64]*Batch           `json:"paid_batches" bson:"PAID_CHANNELS"`
+	SpecialBatches   map[int64]*Batch           `json:"special_batches" bson:"SPECIAL_CHANNELS"`
+	AllChats         map[int64]string           `json:"all_chats" bson:"ALL_CHATS"`
+	Users            map[int64]*User            `json:"users" bson:"USER_DATA"`
+	BlockedUsers     map[int64]struct{}         `json:"blocked_users" bson:"BLOCKED_USERS"`
+	UserTopics       map[int64]*SupportTopic    `json:"user_topics" bson:"USER_TOPICS"`
+	PendingRequests  map[string]*PendingRequest `json:"pending_requests" bson:"PENDING_REQUESTS"`
+	LinkMap          map[string]*InviteMapping  `json:"link_map" bson:"LINK_MAP"`
+	CustomWelcomes   map[int64]string           `json:"custom_welcomes" bson:"CUSTOM_WELCOMES"`
+	BatchCategories  map[int64]string           `json:"batch_categories" bson:"BATCH_CATEGORIES"`
+	Categories       []string                   `json:"categories" bson:"CATEGORIES"`
+	ScheduledDeletes []*ScheduledDelete         `json:"scheduled_deletes" bson:"SCHEDULED_DELETES"`
+	BatchCoins       map[int64]int64            `json:"batch_coins" bson:"BATCH_COINS"`
 
 	WebAdmins   map[string]*WebAdmin   `json:"web_admins" bson:"web_admins"`
 	WebSessions map[string]*WebSession `json:"web_sessions" bson:"web_sessions"`
 	MessageMap  map[string]string      `json:"message_map" bson:"message_map"`
 
-	NewUsersAllowed bool   `json:"new_users_allowed" bson:"new_users_allowed"`
-	FreeLocked      bool   `json:"free_locked" bson:"free_locked"`
-	PaidLocked      bool   `json:"paid_locked" bson:"paid_locked"`
-	TestBotLocked   bool   `json:"test_bot_locked" bson:"test_bot_locked"`
-	MaintenanceMode bool   `json:"maintenance_mode" bson:"maintenance_mode"`
-	TestBotLink     string `json:"test_bot_link" bson:"test_bot_link"`
-	UserbotSession  string `json:"userbot_session" bson:"userbot_session"`
-	UserbotPhone    string `json:"userbot_phone" bson:"userbot_phone"`
+	NewUsersAllowed bool   `json:"new_users_allowed" bson:"NEW_USERS_ALLOWED"`
+	FreeLocked      bool   `json:"free_locked" bson:"FREE_LOCKED"`
+	PaidLocked      bool   `json:"paid_locked" bson:"PAID_LOCKED"`
+	TestBotLocked   bool   `json:"test_bot_locked" bson:"TEST_BOT_LOCKED"`
+	MaintenanceMode bool   `json:"maintenance_mode" bson:"MAINTENANCE_MODE"`
+	TestBotLink     string `json:"test_bot_link" bson:"TEST_BOT_LINK"`
+	UserbotSession  string `json:"userbot_session" bson:"USERBOT_SESSION"`
+	UserbotPhone    string `json:"userbot_phone" bson:"USERBOT_PHONE"`
 
-	VIPMaterialsLink string `json:"vip_materials_link" bson:"vip_materials_link"`
-	VIPStickerID     string `json:"vip_sticker_id" bson:"vip_sticker_id"`
-	VIPStickerType   string `json:"vip_sticker_type" bson:"vip_sticker_type"`
+	VIPMaterialsLink string `json:"vip_materials_link" bson:"VIP_MATERIALS_LINK"`
+	VIPStickerID     string `json:"vip_sticker_id" bson:"VIP_STICKER_ID"`
+	VIPStickerType   string `json:"vip_sticker_type" bson:"VIP_STICKER_TYPE"`
 }

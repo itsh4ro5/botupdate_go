@@ -228,11 +228,11 @@ func (m *MongoStore) GetDashboardOverview(ctx context.Context) (*models.Dashboar
 	pipeline := []bson.M{
 		{"$match": bson.M{"_id": "main_settings"}},
 		{"$project": bson.M{
-			"total_users":           bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.users", bson.M{}}}}},
-			"total_free_batches":    bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.free_batches", bson.M{}}}}},
-			"total_paid_batches":    bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.paid_batches", bson.M{}}}}},
-			"total_special_batches": bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.special_batches", bson.M{}}}}},
-			"pending_requests":      bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.pending_requests", bson.M{}}}}},
+			"total_users":           bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.USER_DATA", bson.M{}}}}},
+			"total_free_batches":    bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.FREE_CHANNELS", bson.M{}}}}},
+			"total_paid_batches":    bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.PAID_CHANNELS", bson.M{}}}}},
+			"total_special_batches": bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.SPECIAL_CHANNELS", bson.M{}}}}},
+			"pending_requests":      bson.M{"$size": bson.M{"$objectToArray": bson.M{"$ifNull": []interface{}{"$data.PENDING_REQUESTS", bson.M{}}}}},
 		}},
 	}
 

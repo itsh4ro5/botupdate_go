@@ -132,8 +132,8 @@ func (b *BotState) UnmarshalBSON(data []byte) error {
 	type Alias BotState
 
 	aux := &struct {
-		AdminIDs     bson.RawValue `bson:"admin_ids"`
-		BlockedUsers bson.RawValue `bson:"blocked_users"`
+		AdminIDs     bson.RawValue `bson:"ADMIN_IDS"`
+		BlockedUsers bson.RawValue `bson:"BLOCKED_USERS"`
 		Alias        `bson:",inline"`
 	}{
 		Alias: (Alias)(*b),
@@ -210,8 +210,8 @@ func (b *BotState) MarshalBSON() ([]byte, error) {
 	}
 
 	return bson.Marshal(&struct {
-		AdminIDs     []int64 `bson:"admin_ids"`
-		BlockedUsers []int64 `bson:"blocked_users"`
+		AdminIDs     []int64 `bson:"ADMIN_IDS"`
+		BlockedUsers []int64 `bson:"BLOCKED_USERS"`
 		Alias        `bson:",inline"`
 	}{
 		AdminIDs:     adminIDsArray,
