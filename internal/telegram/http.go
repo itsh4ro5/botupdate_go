@@ -46,7 +46,7 @@ func NewHTTPClient() *http.Client {
 
 // TestConnectivity safely tests connectivity to a given URL
 func TestConnectivity(targetURL string) {
-	log.Printf("Running diagnostic check for: %s", targetURL)
+	log.Printf("Running diagnostic check for Telegram API...")
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -57,7 +57,7 @@ func TestConnectivity(targetURL string) {
 
 	resp, err := client.Get(targetURL)
 	if err != nil {
-		log.Printf("Diagnostic FAIL: %v", err)
+		log.Printf("Diagnostic FAIL: HTTP error")
 		return
 	}
 	defer resp.Body.Close()
