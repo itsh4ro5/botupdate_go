@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -54,8 +56,24 @@ func main() {
 	log.Printf("Loaded state with %d users and %d free batches", len(state.Users), len(state.FreeBatches))
 
 	// 3. Initialize Telegram Bot
+	// Hugging Face Spaces par TLS Handshake timeout fix karne ke liye HTTP/2 disable kar rahe hain
+	hfTransport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   60 * time.Second,
+			KeepAlive: 60 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 60 * time.Second, // Timeout badha diya gaya hai
+		ForceAttemptHTTP2:   false,            // CRITICAL FIX: HF proxy HTTP/2 par hang hota hai
+	}
+
+	hfClient := &http.Client{
+		Transport: hfTransport,
+		Timeout:   90 * time.Second,
+	}
+
 	interceptor := &telegram.UpdateInterceptor{
-		Client: telegram.NewHTTPClient(), // Use our robust client
+		Client: hfClient,
 	}
 
 	apiEndpoint := tgbotapi.APIEndpoint
@@ -63,9 +81,16 @@ func main() {
 		cfg.CustomBaseURL = strings.TrimRight(cfg.CustomBaseURL, "/")
 		apiEndpoint = cfg.CustomBaseURL + "/bot%s/%s"
 	}
-	
-	// Diagnostic connectivity check
-	telegram.TestConnectivity(fmt.Sprintf(apiEndpoint, cfg.TelegramBotToken, "getMe"))
+
+	// Diagnostic connectivity check (Naye HF optimized client ke sath)
+	log.Println("Running HuggingFace optimized diagnostic check...")
+	diagReq, _ := http.NewRequest("GET", fmt.Sprintf(apiEndpoint, cfg.TelegramBotToken, "getMe"), nil)
+	if diagResp, diagErr := hfClient.Do(diagReq); diagErr == nil {
+		log.Printf("Diagnostic SUCCESS: HTTP %d", diagResp.StatusCode)
+		diagResp.Body.Close()
+	} else {
+		log.Printf("Diagnostic warning: %v", diagErr)
+	}
 
 	var bot *tgbotapi.BotAPI
 	var botErr error
