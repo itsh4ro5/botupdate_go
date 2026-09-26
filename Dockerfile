@@ -12,7 +12,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bot ./cmd/bot
+RUN CGO_ENABLED=0 GOOS=linux go build -o bot ./cmd/bot
 
 # Runtime
 FROM alpine:latest
