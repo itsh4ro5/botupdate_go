@@ -3,7 +3,6 @@ package telegram
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"log"
 	"net"
 	"net/http"
