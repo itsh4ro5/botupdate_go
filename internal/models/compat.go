@@ -82,8 +82,6 @@ func parseIntSetFromBSON(raw bson.RawValue) (map[int64]struct{}, error) {
 	return nil, fmt.Errorf("failed to parse IntSet from BSON: unknown format")
 }
 
-
-
 // UnmarshalJSON parses BotState, safely handling legacy lists.
 func (b *BotState) UnmarshalJSON(data []byte) error {
 	type Alias BotState

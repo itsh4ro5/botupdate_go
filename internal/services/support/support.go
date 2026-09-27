@@ -15,13 +15,14 @@ import (
 )
 
 type ConversationDTO struct {
-	ID        string `json:"id"`
-	UserID    int64  `json:"user_id"`
-	Username  string `json:"username"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Blocked   bool   `json:"blocked"`
-	TopicID   int    `json:"topic_id"`
+	ID            string     `json:"id"`
+	UserID        int64      `json:"user_id"`
+	Username      string     `json:"username"`
+	FirstName     string     `json:"first_name"`
+	LastName      string     `json:"last_name"`
+	Blocked       bool       `json:"blocked"`
+	TopicID       int        `json:"topic_id"`
+	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
 }
 
 type MessageDTO struct {
@@ -81,19 +82,39 @@ func (s *SupportService) ListConversations(ctx context.Context, search string) (
 			}
 		}
 
+		var lastMsgAt *time.Time
+		if msgs, ok := state.SupportHistory[uid]; ok && len(msgs) > 0 {
+			last := msgs[len(msgs)-1]
+			t := last.Timestamp
+			lastMsgAt = &t
+		}
+
 		results = append(results, ConversationDTO{
-			ID:        fmt.Sprintf("%d", uid),
-			UserID:    uid,
-			Username:  username,
-			FirstName: firstName,
-			LastName:  lastName,
-			Blocked:   blocked,
-			TopicID:   topic.MessageThread,
+			ID:            fmt.Sprintf("%d", uid),
+			UserID:        uid,
+			Username:      username,
+			FirstName:     firstName,
+			LastName:      lastName,
+			Blocked:       blocked,
+			TopicID:       topic.MessageThread,
+			LastMessageAt: lastMsgAt,
 		})
 	}
 
-	// Sort by First Name as a fallback since we don't have timestamps
+	// Sort by LastMessageAt (descending) first, then by FirstName
 	sort.Slice(results, func(i, j int) bool {
+		a := results[i].LastMessageAt
+		b := results[j].LastMessageAt
+
+		if a != nil && b != nil {
+			return a.After(*b)
+		}
+		if a != nil && b == nil {
+			return true // a is newer
+		}
+		if a == nil && b != nil {
+			return false // b is newer
+		}
 		return results[i].FirstName < results[j].FirstName
 	})
 
@@ -137,13 +158,28 @@ func (s *SupportService) GetConversation(ctx context.Context, userID int64) (*Co
 }
 
 func (s *SupportService) GetMessages(ctx context.Context, userID int64) ([]MessageDTO, error) {
-	// The existing architecture only stores a map of ChatID+MsgID pairs for translation.
-	// It does not store actual message text history.
-	// Returning an empty array as we do not fabricate history.
-	return []MessageDTO{}, nil
+	state, err := s.store.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []MessageDTO
+	if state.SupportHistory != nil {
+		if msgs, ok := state.SupportHistory[userID]; ok {
+			for _, m := range msgs {
+				results = append(results, MessageDTO{
+					ID:        int(m.ID),
+					Text:      m.Text,
+					Direction: m.SenderType,
+				})
+			}
+		}
+	}
+
+	return results, nil
 }
 
-func (s *SupportService) Reply(ctx context.Context, userID int64, text string, adminID string) (*MessageDTO, error) {
+func (s *SupportService) Reply(ctx context.Context, userID int64, text string, replyToMsgID int, adminID string) (*MessageDTO, error) {
 	if text == "" {
 		return nil, errors.New("message text cannot be empty")
 	}
@@ -158,18 +194,38 @@ func (s *SupportService) Reply(ctx context.Context, userID int64, text string, a
 		return nil, errors.New("support topic not found for user")
 	}
 
+	userMsgID := 0
+	if replyToMsgID > 0 {
+		if msgs, ok := state.SupportHistory[userID]; ok {
+			for _, m := range msgs {
+				if m.ID == int64(replyToMsgID) {
+					userMsgID = m.TelegramMsgID
+					break
+				}
+			}
+		}
+	}
+
 	// 1. Send to User
 	msg := tgbotapi.NewMessage(userID, text)
+	if userMsgID > 0 {
+		msg.ReplyToMessageID = userMsgID
+	}
 	sentToUser, err := s.bot.Send(msg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send to user: %v", err)
 	}
 
-	// 2. Copy to Support Group Topic to maintain existing bridge sync
-	copyMsg := tgbotapi.NewCopyMessage(s.supportGroupID, userID, sentToUser.MessageID)
-	copyMsg.ReplyToMessageID = topic.MessageThread
+	// 2. Send distinct notification to Support Group Topic to maintain context
+	adminHeader := fmt.Sprintf("👨‍💻 Admin (Web):\n\n")
+	suppMsg := tgbotapi.NewMessage(s.supportGroupID, adminHeader+text)
+	if replyToMsgID > 0 {
+		suppMsg.ReplyToMessageID = replyToMsgID
+	} else {
+		suppMsg.ReplyToMessageID = topic.MessageThread
+	}
 
-	sentToSupport, errSupp := s.bot.CopyMessage(copyMsg)
+	sentToSupport, errSupp := s.bot.Send(suppMsg)
 	if errSupp == nil && s.eventBus != nil {
 		supportMsg := &models.SupportMessage{
 			ID:             int64(sentToUser.MessageID),
@@ -184,6 +240,7 @@ func (s *SupportService) Reply(ctx context.Context, userID int64, text string, a
 		s.eventBus.Publish(events.TypeSupportMessage, events.SeverityInfo, map[string]interface{}{
 			"message": supportMsg,
 		})
+		_ = s.store.AddSupportMessage(ctx, userID, supportMsg)
 	}
 
 	// Wait, we need to map the messages in the global messageMap but we can't because it's in the bot package and unexported.

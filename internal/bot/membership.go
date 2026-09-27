@@ -2,8 +2,7 @@ package bot
 
 import (
 	"context"
-	"fmt"
-	"time"
+	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/itsh4ro5/botupdate/internal/database"
@@ -14,8 +13,8 @@ type MembershipService struct {
 	auth      *AuthService
 	store     database.Store
 	mandatory int64
-	cache     map[string]int64
-	cacheTTL  time.Duration
+	cache     map[int64]bool
+	mu        sync.RWMutex
 }
 
 func NewMembershipService(bot *tgbotapi.BotAPI, auth *AuthService, store database.Store, mandatory int64) *MembershipService {
@@ -24,8 +23,7 @@ func NewMembershipService(bot *tgbotapi.BotAPI, auth *AuthService, store databas
 		auth:      auth,
 		store:     store,
 		mandatory: mandatory,
-		cache:     make(map[string]int64),
-		cacheTTL:  30 * time.Second,
+		cache:     make(map[int64]bool),
 	}
 }
 
@@ -37,14 +35,14 @@ func (s *MembershipService) CheckMembership(ctx context.Context, userID int64) (
 		return true, nil
 	}
 
-	key := fmt.Sprintf("%d_%d", s.mandatory, userID)
-	if exp, ok := s.cache[key]; ok && time.Now().Unix() < exp {
-		// Valid cache, return true (we only cache successful memberships, or we should cache the result boolean?)
-		// The python code caches the actual result for 30s.
-		// Wait, the python code sets: `_MEMBERSHIP_CACHE[key] = (result, now + ttl)`
+	s.mu.RLock()
+	if isMember, exists := s.cache[userID]; exists {
+		s.mu.RUnlock()
+		return isMember, nil
 	}
+	s.mu.RUnlock()
 
-	// For simplicity in this mock, we will implement full cache later, for now call API
+	// Call API if not in cache
 	member, err := s.bot.GetChatMember(tgbotapi.GetChatMemberConfig{
 		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
 			ChatID: s.mandatory,
@@ -61,9 +59,17 @@ func (s *MembershipService) CheckMembership(ctx context.Context, userID int64) (
 		result = true
 	}
 
-	if result {
-		s.cache[key] = time.Now().Add(s.cacheTTL).Unix()
-	}
+	s.mu.Lock()
+	s.cache[userID] = result
+	s.mu.Unlock()
 
 	return result, nil
+}
+
+// UpdateMembership updates the cached membership status for a user based on ChatMember events.
+// This allows the bot to react to users leaving the channel immediately without relying on API polling.
+func (s *MembershipService) UpdateMembership(userID int64, isMember bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cache[userID] = isMember
 }

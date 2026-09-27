@@ -31,6 +31,8 @@ type Router struct {
 	wizardMutex          sync.RWMutex
 	scheduler            *services.Scheduler
 	batchUpdateChannelID int64
+	msgMapCache          map[string]string
+	msgMapMutex          sync.RWMutex
 }
 
 type WizardState struct {
@@ -54,7 +56,8 @@ type WizardState struct {
 func NewRouter(bot *tgbotapi.BotAPI, api *telegram.APIClient, store database.Store, ownerID int64, supportGroupID int64, mandatoryChannelID int64, mtprotoService *mtproto.Service, scheduler *services.Scheduler, batchUpdateChannelID int64) *Router {
 	authService := NewAuthService(store, ownerID)
 	supportService := services.NewSupportService(bot, api, store, supportGroupID)
-	return &Router{
+	
+	r := &Router{
 		bot:                  bot,
 		api:                  api,
 		store:                store,
@@ -66,7 +69,17 @@ func NewRouter(bot *tgbotapi.BotAPI, api *telegram.APIClient, store database.Sto
 		adminWizard:          make(map[int64]*WizardState),
 		scheduler:            scheduler,
 		batchUpdateChannelID: batchUpdateChannelID,
+		msgMapCache:          make(map[string]string),
 	}
+
+	state, err := store.Load(context.Background())
+	if err == nil && state.MessageMap != nil {
+		for k, v := range state.MessageMap {
+			r.msgMapCache[k] = v
+		}
+	}
+
+	return r
 }
 
 func (r *Router) HandleUpdate(ctx context.Context, update tgbotapi.Update) {
@@ -79,16 +92,13 @@ func (r *Router) HandleUpdate(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	if fromID != 0 {
-		state, err := r.store.Load(ctx)
-		if err == nil {
-			if _, blocked := state.BlockedUsers[fromID]; blocked {
-				// Blocked user! Silently drop the update.
-				if update.CallbackQuery != nil {
-					// Answer callback so it doesn't hang forever
-					r.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "❌ You are blocked from using this bot."))
-				}
-				return
+		if r.auth.IsBlocked(ctx, fromID) {
+			// Blocked user! Silently drop the update.
+			if update.CallbackQuery != nil {
+				// Answer callback so it doesn't hang forever
+				r.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "❌ You are blocked from using this bot."))
 			}
+			return
 		}
 	}
 
@@ -166,11 +176,14 @@ func (r *Router) handleChatMember(ctx context.Context, update *tgbotapi.ChatMemb
 		// ONLY explicitly left, kicked, or banned users are universally kicked
 		// "restricted" users might still be members (e.g. muted), so they are spared.
 		if status == "left" || status == "kicked" || status == "banned" {
+			r.membership.UpdateMembership(update.NewChatMember.User.ID, false)
 			state, err := r.store.Load(ctx)
 			if err == nil {
 				targetUserID := update.NewChatMember.User.ID
 				r.scheduler.UniversalKick(ctx, targetUserID, state)
 			}
+		} else if status == "member" || status == "administrator" || status == "creator" || status == "restricted" {
+			r.membership.UpdateMembership(update.NewChatMember.User.ID, true)
 		}
 	}
 }

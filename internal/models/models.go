@@ -188,6 +188,7 @@ type BotState struct {
 	WebAdmins   map[string]*WebAdmin   `json:"web_admins" bson:"web_admins"`
 	WebSessions map[string]*WebSession `json:"web_sessions" bson:"web_sessions"`
 	MessageMap  map[string]string      `json:"message_map" bson:"message_map"`
+	SupportHistory map[int64][]*SupportMessage `json:"support_history" bson:"support_history"`
 
 	NewUsersAllowed bool   `json:"new_users_allowed" bson:"NEW_USERS_ALLOWED"`
 	FreeLocked      bool   `json:"free_locked" bson:"FREE_LOCKED"`

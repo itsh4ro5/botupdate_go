@@ -27,6 +27,7 @@ import (
 	"github.com/itsh4ro5/botupdate/internal/services/users"
 	"github.com/itsh4ro5/botupdate/internal/telegram"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/itsh4ro5/botupdate/internal/mtproto"
 )
 
 // Server represents the web API server foundation.
@@ -36,7 +37,7 @@ type Server struct {
 }
 
 // NewServer initializes the Fiber application and its middlewares.
-func NewServer(ctx context.Context, store database.Store, apiClient *telegram.APIClient, bot *tgbotapi.BotAPI, supportGroupID int64) *Server {
+func NewServer(ctx context.Context, store database.Store, apiClient *telegram.APIClient, bot *tgbotapi.BotAPI, supportGroupID int64, mtprotoService *mtproto.Service) *Server {
 	// Initialize default owner if none exist and ENV vars are provided
 	state, err := store.Load(context.Background())
 	if err == nil && len(state.WebAdmins) == 0 {
@@ -150,7 +151,7 @@ func NewServer(ctx context.Context, store database.Store, apiClient *telegram.AP
 	auditService := audit.NewAuditService(events.GetBus())
 	adminService := admin.NewAdminService(store, events.GetBus())
 	routes.RegisterAdminRoutes(v1, store, adminService, auditService)
-	routes.RegisterOperationsRoutes(v1, store)
+	routes.RegisterOperationsRoutes(v1, store, bot, mtprotoService)
 
 	// WebSockets Hub
 	hub := ws.NewHub()

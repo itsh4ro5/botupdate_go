@@ -134,6 +134,23 @@ func (s *Service) GetUser(ctx context.Context, id int64) (*UserProfile, error) {
 
 	_, isBlockedActual := state.BlockedUsers[id]
 
+	var batchNames []string
+	if u.FreeUnlocked {
+		batchNames = append(batchNames, "All Free Batches")
+	}
+	for _, bid := range u.FreeBatchesJoined {
+		if b, ok := state.FreeBatches[bid]; ok {
+			batchNames = append(batchNames, b.Name)
+		}
+	}
+	for _, bid := range u.JoinedBatches {
+		if b, ok := state.PaidBatches[bid]; ok {
+			batchNames = append(batchNames, "[Paid] "+b.Name)
+		} else if b, ok := state.SpecialBatches[bid]; ok {
+			batchNames = append(batchNames, "[Special] "+b.Name)
+		}
+	}
+
 	return &UserProfile{
 		ID:                  u.ID,
 		Username:            u.Username,
@@ -147,6 +164,6 @@ func (s *Service) GetUser(ctx context.Context, id int64) (*UserProfile, error) {
 		Tier:                u.Tier,
 		WelcomeBonusClaimed: u.WelcomeBonusClaimed,
 		FreeUnlocked:        u.FreeUnlocked,
-		UnlockedBatches:     u.UnlockedBatches,
+		UnlockedBatches:     batchNames,
 	}, nil
 }

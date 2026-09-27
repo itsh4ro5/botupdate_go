@@ -20,19 +20,45 @@ type SupportService struct {
 	store          database.Store
 	supportGroupID int64
 	topicLocks     sync.Map // Prevents duplicate topic creation for the same user concurrently
+
+	topicsCache map[int64]*models.SupportTopic
+	topicsMutex sync.RWMutex
 }
 
 func NewSupportService(bot *tgbotapi.BotAPI, api *telegram.APIClient, store database.Store, groupID int64) *SupportService {
-	return &SupportService{
+	s := &SupportService{
 		bot:            bot,
 		api:            api,
 		store:          store,
 		supportGroupID: groupID,
+		topicsCache:    make(map[int64]*models.SupportTopic),
 	}
+
+	state, err := store.Load(context.Background())
+	if err == nil && state.UserTopics != nil {
+		for k, v := range state.UserTopics {
+			s.topicsCache[k] = v
+		}
+	}
+
+	return s
 }
 
 func (s *SupportService) GetSupportGroupID() int64 {
 	return s.supportGroupID
+}
+
+// GetUserIDByTopicID searches the cache to reverse-lookup a user by their topic ID
+func (s *SupportService) GetUserIDByTopicID(topicID int) int64 {
+	s.topicsMutex.RLock()
+	defer s.topicsMutex.RUnlock()
+
+	for uid, topic := range s.topicsCache {
+		if topic.MessageThread == topicID || topic.TopicID == topicID {
+			return uid
+		}
+	}
+	return 0
 }
 
 // EnsureTopic retrieves or creates a forum topic for the user
@@ -41,35 +67,35 @@ func (s *SupportService) EnsureTopic(ctx context.Context, user *tgbotapi.User, i
 		return nil, nil
 	}
 
-	// 1. Lock per user
+	// 1. Check existing state (fast path)
+	s.topicsMutex.RLock()
+	if topic, exists := s.topicsCache[user.ID]; exists {
+		s.topicsMutex.RUnlock()
+		return topic, nil
+	}
+	s.topicsMutex.RUnlock()
+
+	// 2. Lock per user
 	lock, _ := s.topicLocks.LoadOrStore(user.ID, &sync.Mutex{})
 	mutex := lock.(*sync.Mutex)
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	// 2. Check existing state
-	state, err := s.store.Load(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if topic, exists := state.UserTopics[user.ID]; exists {
+	// 3. Double-check inside lock
+	s.topicsMutex.RLock()
+	if topic, exists := s.topicsCache[user.ID]; exists {
+		s.topicsMutex.RUnlock()
 		return topic, nil
 	}
+	s.topicsMutex.RUnlock()
 
-	// 3. Create new topic in Telegram via custom API client
+	// 4. Create new topic in Telegram via custom API client
 	title := BuildSupportTopicName(user)
 
 	threadID, err := s.api.CreateForumTopic(s.supportGroupID, title)
 	if err != nil {
 		if !isRetry {
 			log.Printf("Topic Creation Error for %d: %v. Retrying...", user.ID, err)
-			time.Sleep(1 * time.Second) // Python does some native refresh, here we just backoff and retry
-			// To avoid deadlock on retry since we already have the lock, we unlock and recall or just do the logic.
-			// Actually we can just call EnsureTopic with isRetry=true outside the lock, or do the retry inline.
-		}
-
-		if !isRetry {
 			mutex.Unlock()
 			time.Sleep(1 * time.Second)
 			topic, err := s.EnsureTopic(ctx, user, true)
@@ -87,10 +113,13 @@ func (s *SupportService) EnsureTopic(ctx context.Context, user *tgbotapi.User, i
 		MessageThread: threadID,
 	}
 
-	if err := s.store.SetSupportTopic(ctx, user.ID, newTopic); err != nil {
-		// Clean up on save failure? Not strictly needed if state is memory first
-		return nil, err
-	}
+	s.topicsMutex.Lock()
+	s.topicsCache[user.ID] = newTopic
+	s.topicsMutex.Unlock()
+
+	go func() {
+		_ = s.store.SetSupportTopic(context.Background(), user.ID, newTopic)
+	}()
 
 	// Send NEW USER TICKET message
 	dispName := user.FirstName

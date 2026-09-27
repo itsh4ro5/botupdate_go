@@ -12,6 +12,7 @@ interface ConversationDTO {
   last_name: string;
   blocked: boolean;
   topic_id: number;
+  last_message_at?: string;
 }
 
 interface MessageDTO {
@@ -67,13 +68,13 @@ export const Support: React.FC = () => {
         if (selectedConv && String(selectedConv.user_id) === userIdStr) {
           // It's the active conversation
           if (msg.sender_type === 'incoming' || msg.sender_type === 'outgoing') {
-            // Check if we already appended it optimisticly (for outgoing)
             setMessages(prev => {
-              if (msg.sender_type === 'outgoing' && prev.some(p => p.direction === 'outgoing' && p.text === msg.text && Date.now() - new Date(p.timestamp || 0).getTime() < 5000)) {
-                return prev; // skip optimistic duplicate
-              }
+              // Ensure we don't duplicate by ID just in case (websocket might deliver twice if reconnected)
+              const msgId = msg.telegram_msg_id || msg.id;
+              if (prev.some(p => p.id === msgId)) return prev;
+              
               return [...prev, {
-                id: msg.telegram_msg_id || msg.id,
+                id: msgId,
                 text: msg.text || '[Message]',
                 direction: msg.sender_type as 'incoming' | 'outgoing',
                 timestamp: msg.timestamp || new Date().toISOString()
@@ -123,6 +124,8 @@ export const Support: React.FC = () => {
     }
   };
 
+  const [replyToMsg, setReplyToMsg] = useState<{id: number, text: string} | null>(null);
+
   const scrollToBottom = () => {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -138,17 +141,13 @@ export const Support: React.FC = () => {
     
     setSending(true);
     try {
-      const res = await api.post<{success: boolean, message_id: number}>(`/support/conversations/${selectedConv.user_id}/reply`, {
-        text: replyText.trim()
+      await api.post<{success: boolean, message_id: number}>(`/support/conversations/${selectedConv.user_id}/reply`, {
+        text: replyText.trim(),
+        reply_to_msg_id: replyToMsg ? replyToMsg.id : undefined
       });
       
-      setMessages(prev => [...prev, {
-        id: res.message_id,
-        text: replyText.trim(),
-        direction: 'outgoing',
-        timestamp: new Date().toISOString()
-      }]);
       setReplyText('');
+      setReplyToMsg(null);
       scrollToBottom();
       textareaRef.current?.focus();
     } catch (err: any) {
@@ -223,7 +222,14 @@ export const Support: React.FC = () => {
                       {unread > 0 && <span className="unread-badge">{unread}</span>}
                     </div>
                     <div className="conv-info">
-                      <div className="conv-name">{conv.first_name} {conv.last_name}</div>
+                      <div className="conv-name flex justify-between w-full">
+                        <span>{conv.first_name} {conv.last_name}</span>
+                        {conv.last_message_at && (
+                          <span className="text-[10px] text-muted whitespace-nowrap ml-2 font-normal mt-[2px]">
+                            {new Date(conv.last_message_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </span>
+                        )}
+                      </div>
                       <div className="conv-meta">
                         {conv.username ? `@${conv.username}` : `ID: ${conv.user_id}`}
                         {conv.blocked && <span className="badge badge-danger ml-auto">Blocked</span>}
@@ -284,11 +290,16 @@ export const Support: React.FC = () => {
                       <div className="message-content">
                         {msg.text}
                       </div>
-                      {msg.timestamp && (
-                        <div className="msg-timestamp text-[10px] opacity-40 mt-1 text-right">
-                           {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </div>
-                      )}
+                      <div className="msg-meta flex justify-between items-center mt-1">
+                        <button className="btn-icon small text-muted opacity-50 hover:opacity-100" onClick={() => setReplyToMsg({id: msg.id, text: msg.text})} title="Reply">
+                          <MessageSquare size={10} />
+                        </button>
+                        {msg.timestamp && (
+                          <div className="msg-timestamp text-[10px] opacity-40 text-right ml-auto">
+                             {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}
@@ -296,6 +307,15 @@ export const Support: React.FC = () => {
               </div>
 
               <div className="reply-container">
+                {replyToMsg && (
+                  <div className="reply-preview text-xs bg-[var(--background-secondary)] p-2 rounded mb-2 flex justify-between items-center opacity-80 border-l-2 border-accent">
+                    <span className="truncate mr-4 flex-1">
+                      <span className="font-bold mr-2 text-accent">Replying to:</span> 
+                      {replyToMsg.text}
+                    </span>
+                    <button className="btn-icon small hover:text-error" onClick={() => setReplyToMsg(null)}><XCircle size={14}/></button>
+                  </div>
+                )}
                 <div className="reply-composer-wrapper">
                   <textarea 
                     ref={textareaRef}

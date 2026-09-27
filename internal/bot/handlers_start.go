@@ -37,7 +37,6 @@ func (r *Router) HandleStart(ctx context.Context, msg *tgbotapi.Message) {
 			ReferralCount:   0,
 			TotalInvited:    0,
 		}
-		state.Users[userID] = user
 	}
 	if user.UnlockedBatches == nil {
 		user.UnlockedBatches = []string{}

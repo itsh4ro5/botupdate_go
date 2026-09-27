@@ -91,8 +91,10 @@ func (s *JSONStore) SetLockState(ctx context.Context, lockType string, locked bo
 			state.FreeLocked = locked
 		case "paid":
 			state.PaidLocked = locked
-		case "test":
+		case "testbot":
 			state.TestBotLocked = locked
+		case "lockdown":
+			state.NewUsersAllowed = locked
 		}
 	})
 }

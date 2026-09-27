@@ -70,9 +70,6 @@ func (s *Scheduler) runCleanup(ctx context.Context) {
 
 	now := time.Now().Unix()
 
-	// Trigger background membership sync
-	go s.RunSync(ctx, nil)
-
 	// Check demo expirations
 	for id, user := range state.Users {
 		if user.Demos == nil {

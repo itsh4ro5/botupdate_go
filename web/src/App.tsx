@@ -13,6 +13,9 @@ import { Operations } from './pages/Operations';
 import { SecuritySettings } from './pages/SecuritySettings';
 import { Login } from './pages/Login';
 import { ChangePassword } from './pages/ChangePassword';
+import { Broadcast } from './pages/Broadcast';
+import { Userbot } from './pages/Userbot';
+import { Scheduler } from './pages/Scheduler';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
 
@@ -140,6 +143,39 @@ function App() {
           <ProtectedRoute>
             <AppLayout>
               <SecuritySettings />
+            </AppLayout>
+          </ProtectedRoute>
+        } 
+      />
+      
+      <Route 
+        path="/broadcast" 
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <Broadcast />
+            </AppLayout>
+          </ProtectedRoute>
+        } 
+      />
+
+      <Route 
+        path="/userbot" 
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <Userbot />
+            </AppLayout>
+          </ProtectedRoute>
+        } 
+      />
+
+      <Route 
+        path="/scheduler" 
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <Scheduler />
             </AppLayout>
           </ProtectedRoute>
         } 

@@ -41,6 +41,7 @@ type Store interface {
 
 	SetMessageMapping(ctx context.Context, key string, val string) error
 	RemoveMessageMapping(ctx context.Context, key string) error
+	AddSupportMessage(ctx context.Context, userID int64, msg *models.SupportMessage) error
 
 	// Batch Analytics / Firebase port
 	SaveBatchContents(ctx context.Context, chatID string, data interface{}) error
@@ -170,6 +171,23 @@ func (s *JSONStore) RemoveMessageMapping(ctx context.Context, key string) error 
 		return s.Save(ctx, state)
 	}
 	return nil
+}
+
+func (s *JSONStore) AddSupportMessage(ctx context.Context, userID int64, msg *models.SupportMessage) error {
+	state, err := s.Load(ctx)
+	if err != nil {
+		return err
+	}
+	if state.SupportHistory == nil {
+		state.SupportHistory = make(map[int64][]*models.SupportMessage)
+	}
+	history := state.SupportHistory[userID]
+	history = append(history, msg)
+	if len(history) > 50 {
+		history = history[len(history)-50:]
+	}
+	state.SupportHistory[userID] = history
+	return s.Save(ctx, state)
 }
 
 func (s *JSONStore) DeleteWebSession(ctx context.Context, sessionID string) error {

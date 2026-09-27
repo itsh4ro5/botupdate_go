@@ -18,6 +18,9 @@ type MongoStore struct {
 	client                  *mongo.Client
 	collection              *mongo.Collection
 	batchContentsCollection *mongo.Collection
+	cache                   *models.BotState
+	cacheTime               time.Time
+	isRefreshing            bool
 }
 
 func NewMongoStore(ctx context.Context, uri string) (*MongoStore, error) {
@@ -128,17 +131,70 @@ func decodeLinkMapKey(key string) string {
 
 func (m *MongoStore) Load(ctx context.Context) (*models.BotState, error) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	if m.cache != nil {
+		if time.Since(m.cacheTime) >= 60*time.Second {
+			// Trigger background refresh if not already refreshing
+			if !m.isRefreshing {
+				m.mu.RUnlock()
+				m.mu.Lock()
+				if !m.isRefreshing {
+					m.isRefreshing = true
+					go m.refreshCacheInBackground(context.Background())
+				}
+				m.mu.Unlock()
+				return m.cache, nil
+			}
+		}
+		cachedState := m.cache
+		m.mu.RUnlock()
+		return cachedState, nil
+	}
+	m.mu.RUnlock()
 
+	// Initial synchronous load
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.cache != nil {
+		return m.cache, nil
+	}
+
+	state, err := m.fetchFromDB(ctx)
+	if err == nil {
+		m.cache = state
+		m.cacheTime = time.Now()
+	}
+	return state, err
+}
+
+func (m *MongoStore) refreshCacheInBackground(ctx context.Context) {
+	state, err := m.fetchFromDB(ctx)
+	
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	m.isRefreshing = false
+	if err == nil {
+		m.cache = state
+		m.cacheTime = time.Now()
+	}
+}
+
+func (m *MongoStore) fetchFromDB(ctx context.Context) (*models.BotState, error) {
 	var doc struct {
 		ID   string          `bson:"_id"`
 		Data models.BotState `bson:"data"`
 	}
 
+	// Wait up to 15s to prevent long hanging
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
 	err := m.collection.FindOne(ctx, bson.M{"_id": "main_settings"}).Decode(&doc)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return m.emptyState(), nil
+			empty := m.emptyState()
+			return empty, nil
 		}
 		return nil, fmt.Errorf("failed to load state from mongo: %w", err)
 	}
@@ -213,6 +269,9 @@ func (m *MongoStore) Load(ctx context.Context) (*models.BotState, error) {
 func (m *MongoStore) Save(ctx context.Context, state *models.BotState) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	m.cache = state
+	m.cacheTime = time.Now()
 
 	opts := options.Update().SetUpsert(true)
 	filter := bson.M{"_id": "main_settings"}

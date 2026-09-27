@@ -67,7 +67,7 @@ func NewHTTPClient() *http.Client {
 			}
 
 			tlsConn := tls.Client(conn, tlsConfig)
-			
+
 			// Use a deadline for the handshake
 			err = tlsConn.SetDeadline(time.Now().Add(15 * time.Second))
 			if err != nil {
@@ -80,7 +80,7 @@ func NewHTTPClient() *http.Client {
 				conn.Close()
 				return nil, err
 			}
-			
+
 			// Clear deadline after handshake
 			tlsConn.SetDeadline(time.Time{})
 
@@ -89,8 +89,8 @@ func NewHTTPClient() *http.Client {
 
 		TLSHandshakeTimeout: 15 * time.Second,
 
-		ForceAttemptHTTP2:   false, // CRITICAL: HF proxy HTTP/2 hangs while awaiting headers
-		DisableKeepAlives:   true,  // Avoid stale pooled connections
+		ForceAttemptHTTP2: false, // CRITICAL: HF proxy HTTP/2 hangs while awaiting headers
+		DisableKeepAlives: true,  // Avoid stale pooled connections
 
 		MaxIdleConns:        10,
 		MaxIdleConnsPerHost: 10,
@@ -220,7 +220,7 @@ func TestConnectivity(targetURL string) {
 		httpStart := time.Now()
 		req, _ := http.NewRequest(method, url, nil)
 		req.Close = true // Connection: close
-		
+
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("HTTP %s: FAIL (%v) [Elapsed: %v]", name, err, time.Since(httpStart))

@@ -160,7 +160,22 @@ func (s *BatchService) handleReqAccess(ctx context.Context, query *tgbotapi.Call
 		if topicID != 0 {
 			msg.ReplyToMessageID = topicID
 		}
-		s.bot.Send(msg)
+		sentMsg, err := s.bot.Send(msg)
+		if err == nil {
+			supportMsg := &models.SupportMessage{
+				ID:             int64(sentMsg.MessageID),
+				ConversationID: uid,
+				SenderType:     "incoming",
+				SenderName:     "System (Join Request)",
+				Text:           notificationText,
+				Timestamp:      time.Now(),
+				TelegramMsgID:  sentMsg.MessageID,
+			}
+			events.Publish(events.TypeSupportMessage, events.SeverityInfo, map[string]interface{}{
+				"message": supportMsg,
+			})
+			_ = s.store.AddSupportMessage(ctx, uid, supportMsg)
+		}
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(

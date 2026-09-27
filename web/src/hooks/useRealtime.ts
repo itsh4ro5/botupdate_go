@@ -47,6 +47,12 @@ export function useRealtime() {
           
           if (!eventIds.current.has(newEvent.id)) {
             eventIds.current.add(newEvent.id);
+            
+            // Dispatch event for components listening directly
+            window.dispatchEvent(new CustomEvent('REALTIME_EVENT', {
+              detail: newEvent
+            }));
+
             setEvents(prev => {
               const updated = [newEvent, ...prev];
               if (updated.length > 50) {

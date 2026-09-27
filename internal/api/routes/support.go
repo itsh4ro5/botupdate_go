@@ -1,11 +1,12 @@
 package routes
 
 import (
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/itsh4ro5/botupdate/internal/api/middleware"
 	"github.com/itsh4ro5/botupdate/internal/database"
 	"github.com/itsh4ro5/botupdate/internal/services/support"
-	"strconv"
 )
 
 func RegisterSupportRoutes(router fiber.Router, store database.Store, supportService *support.SupportService) {
@@ -66,7 +67,8 @@ func RegisterSupportRoutes(router fiber.Router, store database.Store, supportSer
 		}
 
 		var req struct {
-			Text string `json:"text"`
+			Text         string `json:"text"`
+			ReplyToMsgID int    `json:"reply_to_msg_id,omitempty"`
 		}
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
@@ -77,7 +79,7 @@ func RegisterSupportRoutes(router fiber.Router, store database.Store, supportSer
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 		}
 
-		msg, err := supportService.Reply(c.Context(), userID, req.Text, adminID)
+		msg, err := supportService.Reply(c.Context(), userID, req.Text, req.ReplyToMsgID, adminID)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}

@@ -201,7 +201,7 @@ func main() {
 	interceptor.Ctx = ctx
 
 	// 6.5 Initialize and Start Web API
-	apiServer := api.NewServer(ctx, store, apiClient, bot, cfg.SupportGroupID)
+	apiServer := api.NewServer(ctx, store, apiClient, bot, cfg.SupportGroupID, mtprotoService)
 	go func() {
 		port := os.Getenv("PORT")
 		if port == "" {

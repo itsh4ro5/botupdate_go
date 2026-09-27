@@ -18,30 +18,35 @@ type MsgKey struct {
 }
 
 func (r *Router) setMapping(ctx context.Context, k1, k2 MsgKey) {
-	state, err := r.store.Load(ctx)
-	if err != nil {
-		return
-	}
-	if state.MessageMap == nil {
-		state.MessageMap = make(map[string]string)
-	}
 	key1 := fmt.Sprintf("%d_%d", k1.ChatID, k1.MsgID)
 	key2 := fmt.Sprintf("%d_%d", k2.ChatID, k2.MsgID)
-	state.MessageMap[key1] = key2
-	state.MessageMap[key2] = key1
-	r.store.Save(ctx, state)
+
+	r.msgMapMutex.Lock()
+	if r.msgMapCache == nil {
+		r.msgMapCache = make(map[string]string)
+	}
+	r.msgMapCache[key1] = key2
+	r.msgMapCache[key2] = key1
+	r.msgMapMutex.Unlock()
+
+	// Asynchronously save to DB
+	go func() {
+		_ = r.store.SetMessageMapping(context.Background(), key1, key2)
+		_ = r.store.SetMessageMapping(context.Background(), key2, key1)
+	}()
 }
 
 func (r *Router) getMapping(ctx context.Context, k MsgKey) (MsgKey, bool) {
-	state, err := r.store.Load(ctx)
-	if err != nil || state.MessageMap == nil {
-		return MsgKey{}, false
-	}
 	key := fmt.Sprintf("%d_%d", k.ChatID, k.MsgID)
-	val, ok := state.MessageMap[key]
+	
+	r.msgMapMutex.RLock()
+	val, ok := r.msgMapCache[key]
+	r.msgMapMutex.RUnlock()
+
 	if !ok {
 		return MsgKey{}, false
 	}
+
 	var chatID int64
 	var msgID int
 	fmt.Sscanf(val, "%d_%d", &chatID, &msgID)
@@ -49,18 +54,22 @@ func (r *Router) getMapping(ctx context.Context, k MsgKey) (MsgKey, bool) {
 }
 
 func (r *Router) delMapping(ctx context.Context, k MsgKey) {
-	state, err := r.store.Load(ctx)
-	if err != nil || state.MessageMap == nil {
-		return
-	}
 	key1 := fmt.Sprintf("%d_%d", k.ChatID, k.MsgID)
-	val, ok := state.MessageMap[key1]
-	if !ok {
-		return
+	
+	r.msgMapMutex.Lock()
+	val, ok := r.msgMapCache[key1]
+	if ok {
+		delete(r.msgMapCache, key1)
+		delete(r.msgMapCache, val)
 	}
-	delete(state.MessageMap, key1)
-	delete(state.MessageMap, val)
-	r.store.Save(ctx, state)
+	r.msgMapMutex.Unlock()
+
+	if ok {
+		go func() {
+			_ = r.store.RemoveMessageMapping(context.Background(), key1)
+			_ = r.store.RemoveMessageMapping(context.Background(), val)
+		}()
+	}
 }
 
 func (r *Router) handlePrivateMessage(ctx context.Context, msg *tgbotapi.Message) {
@@ -101,6 +110,7 @@ func (r *Router) handlePrivateMessage(ctx context.Context, msg *tgbotapi.Message
 		events.Publish(events.TypeSupportMessage, events.SeverityInfo, map[string]interface{}{
 			"message": supportMsg,
 		})
+		_ = r.store.AddSupportMessage(ctx, msg.From.ID, supportMsg)
 	} else {
 		log.Printf("Failed to copy message to support topic: %v", err)
 	}
@@ -115,15 +125,7 @@ func (r *Router) handleSupportReply(ctx context.Context, msg *tgbotapi.Message) 
 	var targetUserID int64
 
 	if topicID != 0 {
-		state, err := r.store.Load(ctx)
-		if err == nil {
-			for uid, topic := range state.UserTopics {
-				if topic.MessageThread == topicID || topic.TopicID == topicID {
-					targetUserID = uid
-					break
-				}
-			}
-		}
+		targetUserID = r.support.GetUserIDByTopicID(topicID)
 	}
 
 	var userMsgID int

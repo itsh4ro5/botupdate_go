@@ -1,10 +1,11 @@
 package database
 
 import (
+	"testing"
+
 	"github.com/itsh4ro5/botupdate/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"testing"
 )
 
 func TestPythonGoMigrationSafety(t *testing.T) {
