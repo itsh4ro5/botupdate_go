@@ -37,7 +37,7 @@ type Server struct {
 }
 
 // NewServer initializes the Fiber application and its middlewares.
-func NewServer(ctx context.Context, store database.Store, apiClient *telegram.APIClient, bot *tgbotapi.BotAPI, supportGroupID int64, mtprotoService *mtproto.Service) *Server {
+func NewServer(ctx context.Context, store database.Store, apiClient *telegram.APIClient, bot *tgbotapi.BotAPI, supportGroupID int64, mtprotoService *mtproto.Service, updates chan tgbotapi.Update) *Server {
 	// Initialize default owner if none exist and ENV vars are provided
 	state, err := store.Load(context.Background())
 	if err == nil && len(state.WebAdmins) == 0 {
@@ -164,6 +164,21 @@ func NewServer(ctx context.Context, store database.Store, apiClient *telegram.AP
 	authGroup.Post("/logout", authHandler.Logout)
 	authGroup.Get("/me", authHandler.Me)
 	authGroup.Post("/change-password", authHandler.ChangePassword)
+
+	// Webhook Endpoint for Telegram (No auth required)
+	app.Post("/webhook", func(c *fiber.Ctx) error {
+		var update tgbotapi.Update
+		if err := c.BodyParser(&update); err != nil {
+			log.Printf("Webhook parse error: %v", err)
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+		select {
+		case updates <- update:
+		default:
+			log.Println("WARNING: updates channel full, dropping update")
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
 
 	// Serve Static Frontend (Vite Build)
 	if _, err := os.Stat("./web/dist"); err == nil {

@@ -142,7 +142,34 @@ func main() {
 	u.Timeout = 50 // Decreased to 50s to avoid Hugging Face 60s egress proxy idle timeout
 	u.AllowedUpdates = []string{"message", "edited_message", "callback_query", "chat_join_request", "chat_member", "my_chat_member", "message_reaction"}
 
-	updates := bot.GetUpdatesChan(u)
+	// We create our own updates channel so we can push to it from Fiber if using Webhooks
+	updates := make(chan tgbotapi.Update, 100)
+
+	webhookURL := os.Getenv("WEBHOOK_URL")
+	if webhookURL != "" {
+		log.Printf("WEBHOOK_URL detected: %s", webhookURL)
+		log.Println("Switching to Webhook Mode (Push)...")
+		wh, err := tgbotapi.NewWebhook(webhookURL + "/webhook")
+		if err != nil {
+			log.Fatalf("Failed to create webhook: %v", err)
+		}
+		wh.AllowedUpdates = u.AllowedUpdates
+		_, err = bot.Request(wh)
+		if err != nil {
+			log.Fatalf("Failed to set webhook: %v", err)
+		}
+		log.Println("Webhook set successfully!")
+	} else {
+		log.Println("WEBHOOK_URL not set. Falling back to Long Polling (Pull)...")
+		_, _ = bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false})
+		
+		go func() {
+			ch := bot.GetUpdatesChan(u)
+			for update := range ch {
+				updates <- update
+			}
+		}()
+	}
 
 	// API Client for internal services
 	apiClient := telegram.NewAPIClient(bot.Token)
@@ -201,7 +228,7 @@ func main() {
 	interceptor.Ctx = ctx
 
 	// 6.5 Initialize and Start Web API
-	apiServer := api.NewServer(ctx, store, apiClient, bot, cfg.SupportGroupID, mtprotoService)
+	apiServer := api.NewServer(ctx, store, apiClient, bot, cfg.SupportGroupID, mtprotoService, updates)
 	go func() {
 		port := os.Getenv("PORT")
 		if port == "" {
