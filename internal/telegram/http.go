@@ -14,6 +14,7 @@ import (
 // It enforces strict timeouts on DNS, TLS Handshakes, and Keep-Alives.
 func NewHTTPClient() *http.Client {
 	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			dialer := &net.Dialer{
 				Timeout:   30 * time.Second,
@@ -122,6 +123,7 @@ func TestConnectivity(targetURL string) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return net.DialTimeout("tcp4", addr, 5*time.Second) // Force IPv4
 			},
